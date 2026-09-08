@@ -1,4 +1,4 @@
-# Запуск демо-стенда в одно действие: ставит зависимости (если надо),
+﻿# Запуск демо-стенда в одно действие: ставит зависимости (если надо),
 # собирает прод-версию и поднимает один процесс на :3001, затем открывает браузер.
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -15,7 +15,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host '  Не найден Node.js. Поставь с nodejs.org (версия 22 или новее) и запусти снова.' -ForegroundColor Red
   exit 1
 }
-$nodeMajor = [int]((node -v) -replace '^v(\d+).*', '$1')
+$nodeMajor = [int](((node -v).Substring(1)).Split('.')[0])
 if ($nodeMajor -lt 22) {
   Write-Host "  Node $(node -v) слишком старый, нужен 22+. Обнови с nodejs.org." -ForegroundColor Red
   exit 1

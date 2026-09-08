@@ -1,4 +1,4 @@
-# Публикация проекта в GitHub одной командой.
+﻿# Публикация проекта в GitHub одной командой.
 #
 #   powershell -ExecutionPolicy Bypass -File tools\push-github.ps1 https://github.com/ЛОГИН/peg-hr-lms.git
 #
