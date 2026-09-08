@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>PEG HR LMS</title>
+    <title>Pingwin LMS — онбординг</title>
+
+    <!-- С телефона это сайт в браузере, но после «Добавить на главный экран»
+         запускается во весь экран, без адресной строки и со своим значком. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#4A0F1E" />
+    <meta name="description" content="Обучение новых сотрудников Pingwin Premium" />
+
+    <!-- iOS манифест не читает: нужны отдельные теги -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pingwin LMS" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

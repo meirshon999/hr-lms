@@ -98,7 +98,9 @@ input, textarea, select { font: inherit; color: var(--text); }
     box-shadow: var(--shadow-lg); border: 1px solid var(--line); }
 }
 /* компактная шапка: не съедает экран телефона */
-.phone-top { background: var(--primary); color: #fff; padding: 12px 16px 14px;
+.phone-top { background: var(--primary); color: #fff;
+  /* запущено с домашнего экрана — шапка не должна уезжать под строку состояния */
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 14px;
   position: sticky; top: 0; z-index: 5; }
 .phone-top .bar { display: flex; align-items: center; justify-content: space-between;
   min-height: 32px; gap: 8px; }
@@ -110,7 +112,7 @@ input, textarea, select { font: inherit; color: var(--text); }
 .phone-body h2 { font-size: 18px; margin-bottom: 4px; }
 
 /* липкая нижняя панель с главным действием — достаётся большим пальцем */
-.phone-action { position: sticky; bottom: var(--devbar-h); z-index: 6;
+.phone-action { position: sticky; bottom: calc(var(--devbar-h) + env(safe-area-inset-bottom, 0px)); z-index: 6;
   background: var(--bg-warm); box-shadow: 0 -14px 18px -6px var(--bg-warm), 0 -1px 0 var(--line-warm);
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   margin-top: 10px; }
