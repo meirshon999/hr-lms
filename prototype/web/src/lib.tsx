@@ -93,17 +93,6 @@ export function OfflineBar() {
   return <div className="offline-bar">Нет сети — изменения не сохранятся. Проверьте интернет.</div>;
 }
 
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="center">
-      <div style={{ maxWidth: 340, textAlign: 'center' }}>
-        <p style={{ fontWeight: 700, marginBottom: 6 }}>{title}</p>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 /* ---------- toast ---------- */
 const ToastCtx = createContext<(msg: string, kind?: 'ok' | 'warn') => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
