@@ -21,23 +21,23 @@ export function Overview() {
       {error && <ErrorBox error={error} onRetry={reload} />}
       {data && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 18 }}>
             {(['intern', 'onboarding', 'completed', 'archived'] as const).map((s) => (
-              <div key={s} className="panel" style={{ marginBottom: 0, textAlign: 'center' }}>
-                <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 30, color: 'var(--primary)' }}>
+              <div key={s} className="panel kpi">
+                <div className="n">
                   {data.by_stage[s] ?? 0}
                 </div>
                 <div className="muted" style={{ fontSize: 13 }}>{STAGE_LABEL[s]}</div>
               </div>
             ))}
-            <div className="panel" style={{ marginBottom: 0, textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 30, color: data.overdue ? 'var(--error)' : 'var(--muted)' }}>
+            <div className="panel kpi">
+              <div className="n" style={{ color: data.overdue ? 'var(--error)' : 'var(--muted)' }}>
                 {data.overdue}
               </div>
               <div className="muted" style={{ fontSize: 13 }}>Просрочено</div>
             </div>
-            <div className="panel" style={{ marginBottom: 0, textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 30, color: 'var(--primary)' }}>
+            <div className="panel kpi">
+              <div className="n">
                 {data.avg_onboarding_days ?? '—'}
               </div>
               <div className="muted" style={{ fontSize: 13 }}>Средний срок, дней</div>

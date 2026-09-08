@@ -9,16 +9,20 @@
   --primary-2: #6a2436;
   --accent: #c6a15b;
   --accent-dark: #a9843f;
-  --bg: #faf6f2;
+  --bg: #f4f5f7;              /* рабочий фон — нейтральный */
+  --bg-warm: #faf6f2;         /* тёплый фон остаётся у сотрудника на телефоне */
+  --ink: #24272c;             /* тёмный нейтральный: сайдбар, строгие заголовки */
+  --ink-2: #33373e;
   --surface: #ffffff;
-  --text: #2a1a1e;
-  --muted: #9b8e8e;
-  --line: #ece1d6;
+  --text: #23262b;
+  --muted: #7d8590;
+  --line: #dfe2e6;
+  --line-warm: #ece1d6;
   --error: #c0392b;
   --success: #2e7d5b;
-  --radius: 14px;
-  --shadow: 0 6px 24px rgba(74, 15, 30, 0.09);
-  --shadow-lg: 0 18px 50px rgba(74, 15, 30, 0.18);
+  --radius: 6px;
+  --shadow: 0 1px 2px rgba(16, 20, 26, .06);
+  --shadow-lg: 0 10px 32px rgba(16, 20, 26, .16);
   --devbar-h: 44px;
   font-family: 'PT Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -35,7 +39,7 @@ input, textarea, select { font: inherit; color: var(--text); }
 
 /* ---------- buttons ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 12px 20px; border-radius: 11px; font-weight: 700; transition: .15s;
+  padding: 11px 18px; border-radius: 6px; font-weight: 700; transition: .15s;
   background: var(--accent); color: #241318; }
 .btn:hover { background: var(--accent-dark); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -47,7 +51,7 @@ input, textarea, select { font: inherit; color: var(--text); }
 .btn.dark:hover { background: var(--primary-2); }
 .btn.danger { background: transparent; color: var(--error); border: 1.5px solid #e8c4bf; }
 .btn.danger:hover { background: #fbeceb; }
-.btn.sm { padding: 8px 14px; border-radius: 9px; font-size: 14px; }
+.btn.sm { padding: 7px 13px; border-radius: 5px; font-size: 13.5px; }
 
 /* ---------- generic ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -85,9 +89,9 @@ input, textarea, select { font: inherit; color: var(--text); }
 /* ---------- employee (mobile app-shell) ---------- */
 .phone-wrap { min-height: 100%; display: flex; justify-content: center;
   padding: 0 0 var(--devbar-h);
-  background: radial-gradient(120% 60% at 50% 0%, #f3e8dc 0%, var(--bg) 60%); }
+  background: radial-gradient(120% 60% at 50% 0%, #f3e8dc 0%, var(--bg-warm) 60%); }
 .phone { width: 100%; max-width: 460px; min-height: calc(100vh - var(--devbar-h));
-  background: var(--bg); display: flex; flex-direction: column; position: relative; }
+  background: var(--bg-warm); display: flex; flex-direction: column; position: relative; }
 @media (min-width: 620px) {
   .phone-wrap { align-items: flex-start; padding: 30px 16px calc(var(--devbar-h) + 24px); }
   .phone { min-height: calc(100vh - var(--devbar-h) - 70px); border-radius: 30px;
@@ -107,7 +111,7 @@ input, textarea, select { font: inherit; color: var(--text); }
 
 /* липкая нижняя панель с главным действием — достаётся большим пальцем */
 .phone-action { position: sticky; bottom: var(--devbar-h); z-index: 6;
-  background: var(--bg); box-shadow: 0 -14px 18px -6px var(--bg), 0 -1px 0 var(--line);
+  background: var(--bg-warm); box-shadow: 0 -14px 18px -6px var(--bg-warm), 0 -1px 0 var(--line-warm);
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   margin-top: 10px; }
 .phone-action .btn { min-height: 52px; font-size: 17px; }
@@ -179,28 +183,37 @@ input, textarea, select { font: inherit; color: var(--text); }
 
 /* ---------- HR (desktop) ---------- */
 .hr-app { display: flex; min-height: 100vh; }
-.hr-side { width: 232px; background: var(--primary); color: #fff; padding: 20px 14px; flex: none;
-  display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
+.hr-side { width: 212px; background: var(--ink); color: #fff; padding: 16px 12px; flex: none;
+  display: flex; flex-direction: column; gap: 3px; position: sticky; top: 0; height: 100vh;
+  /* снизу висит служебная панель DEMO — иначе она накрывает кнопку выхода */
+  padding-bottom: calc(var(--devbar-h) + 12px);
+  border-top: 3px solid var(--primary); }
 .hr-side .brand { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 18px; padding: 8px 10px 16px; }
-.hr-side .brand small { display: block; color: #e6cfa0; font-family: 'PT Sans'; font-weight: 400; font-size: 12px; }
-.hr-side a { color: #eadfd7; text-decoration: none; padding: 10px 12px; border-radius: 9px; font-weight: 700; font-size: 14.5px; }
+.hr-side .brand small { display: block; color: #98a0ab; font-family: 'PT Sans'; font-weight: 400; font-size: 12px; }
+.hr-side a { color: #c9ced6; text-decoration: none; padding: 9px 11px; border-radius: 5px; font-weight: 700; font-size: 14px; }
 .hr-side a:hover { background: rgba(255,255,255,.08); }
 .hr-side a.active { background: var(--accent); color: #241318; }
+.hr-side a:not(.active):hover { color: #fff; }
 .hr-side .hr-nav { display: flex; flex-direction: column; gap: 4px; }
-.hr-side .who { margin-top: auto; font-size: 12.5px; color: #cbb6a2; padding: 10px 2px 2px;
+.hr-side .who { margin-top: auto; font-size: 12.5px; color: #98a0ab; padding: 10px 2px 2px;
   display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
 .hr-side .who .acct { padding: 0 8px; }
-.hr-side .who .logout { color: #f3e6d4; font-size: 13.5px; font-weight: 700; padding: 9px 12px;
+.hr-side .who .logout { color: #e7eaee; font-size: 13.5px; font-weight: 700; padding: 9px 12px;
   border: 1.5px solid rgba(255,255,255,.35); border-radius: 9px; background: transparent;
   cursor: pointer; text-align: center; }
 .hr-side .who .logout:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.6); }
 
-.hr-main { flex: 1; padding: 30px 34px 96px; max-width: 1180px; }
-.hr-main h1 { font-size: 27px; margin-bottom: 4px; }
-.hr-main .subtitle { color: var(--muted); margin-bottom: 22px; }
+.hr-main { flex: 1; padding: 22px 24px 88px; max-width: 1180px; }
+/* в рабочей панели заголовки без засечек — засечки остаются в логотипе и у сотрудника */
+.hr-main h1, .hr-main h2, .hr-main h3, .hr-main h4 {
+  font-family: 'PT Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text); letter-spacing: -.01em; }
+.hr-main h1 { font-size: 21px; margin-bottom: 2px; }
+.hr-main h2 { font-size: 17px; }
+.hr-main .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
 
-.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.toolbar input, .toolbar select { padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 9px; background: #fff; }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar input, .toolbar select { padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
 .toolbar .grow { flex: 1; }
 
 table.grid { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line);
@@ -214,8 +227,12 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 .mini-progress { display: flex; align-items: center; gap: 8px; }
 .mini-progress .progress { width: 90px; }
 
-.panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.panel > h3 { font-size: 16px; margin-bottom: 12px; }
+.panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 16px; margin-bottom: 12px; }
+.panel > h3 { font-size: 15px; margin-bottom: 10px; }
+.panel.kpi { margin-bottom: 0; padding: 12px 14px; }
+.panel.kpi .n { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1;
+  font-variant-numeric: tabular-nums; }
+.panel.kpi .muted { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
 .kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; font-size: 14.5px; }
 .kv dt { color: var(--muted); }
 
