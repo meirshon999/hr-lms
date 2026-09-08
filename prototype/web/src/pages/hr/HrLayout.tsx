@@ -11,12 +11,15 @@ export function HrLayout() {
           <Logo size={26} light />
           <span>Pingwin LMS<small>управление онбордингом</small></span>
         </div>
-        <NavLink to="/hr/overview" className={({ isActive }) => (isActive ? 'active' : '')}>Обзор</NavLink>
-        <NavLink to="/hr/employees" className={({ isActive }) => (isActive ? 'active' : '')}>Сотрудники</NavLink>
-        <NavLink to="/hr/constructor" className={({ isActive }) => (isActive ? 'active' : '')}>Конструктор</NavLink>
+        {/* на узком экране прокручивается только этот блок — выход остаётся на виду */}
+        <div className="hr-nav">
+          <NavLink to="/hr/overview" className={({ isActive }) => (isActive ? 'active' : '')}>Обзор</NavLink>
+          <NavLink to="/hr/employees" className={({ isActive }) => (isActive ? 'active' : '')}>Сотрудники</NavLink>
+          <NavLink to="/hr/constructor" className={({ isActive }) => (isActive ? 'active' : '')}>Конструктор</NavLink>
+        </div>
         <div className="who">
-          {me?.user.login} · {me?.user.role}<br />
-          <button onClick={logout}>выйти</button>
+          <span className="acct">{me?.user.login} · {me?.user.role}</span>
+          <button className="logout" onClick={logout} title="Выйти из системы">Выйти</button>
         </div>
       </nav>
       <main className="hr-main"><Outlet /></main>

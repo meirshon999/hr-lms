@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get, post } from '../../api';
 import { useAuth } from '../../auth';
@@ -26,6 +26,17 @@ export function PreOnboarding() {
     bump();
     reload();
   }
+
+  // Материалы пройдены — ждём кнопку HR. Экран должен обновиться сам, без перезахода:
+  // как только стажировка отмечена, EmployeeHome покажет траекторию.
+  const waiting = !!data?.done;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => { refresh(); }, 10_000);
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(t); window.removeEventListener('focus', onFocus); };
+  }, [waiting]);
 
   const nextItem = data?.items.find((i) => !i.viewed);
   const action = nextItem && open !== nextItem.id ? (
@@ -90,7 +101,9 @@ export function PreOnboarding() {
 
           {data.done && (
             <div className="banner ok mt16">
-              Вы изучили все материалы. Дождитесь окончания стажировки — откроется онбординг.
+              <b>Все материалы изучены.</b><br />
+              Осталось пройти стажировку. Как только руководитель её отметит, обучение
+              откроется прямо здесь — страницу перезагружать не нужно.
             </div>
           )}
         </>

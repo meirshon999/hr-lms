@@ -186,8 +186,14 @@ input, textarea, select { font: inherit; color: var(--text); }
 .hr-side a { color: #eadfd7; text-decoration: none; padding: 10px 12px; border-radius: 9px; font-weight: 700; font-size: 14.5px; }
 .hr-side a:hover { background: rgba(255,255,255,.08); }
 .hr-side a.active { background: var(--accent); color: #241318; }
-.hr-side .who { margin-top: auto; font-size: 12.5px; color: #cbb6a2; padding: 10px; }
-.hr-side .who button { color: #e6cfa0; text-decoration: underline; font-size: 12.5px; }
+.hr-side .hr-nav { display: flex; flex-direction: column; gap: 4px; }
+.hr-side .who { margin-top: auto; font-size: 12.5px; color: #cbb6a2; padding: 10px 2px 2px;
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.hr-side .who .acct { padding: 0 8px; }
+.hr-side .who .logout { color: #f3e6d4; font-size: 13.5px; font-weight: 700; padding: 9px 12px;
+  border: 1.5px solid rgba(255,255,255,.35); border-radius: 9px; background: transparent;
+  cursor: pointer; text-align: center; }
+.hr-side .who .logout:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.6); }
 
 .hr-main { flex: 1; padding: 30px 34px 96px; max-width: 1180px; }
 .hr-main h1 { font-size: 27px; margin-bottom: 4px; }
@@ -325,16 +331,19 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 @media (max-width: 860px) {
   .hr-app { flex-direction: column; }
   .hr-side { width: 100%; height: auto; position: sticky; top: 0; flex-direction: row;
-    align-items: center; gap: 6px; padding: 8px 10px; overflow-x: auto;
-    white-space: nowrap; scrollbar-width: none; }
-  .hr-side::-webkit-scrollbar { display: none; }
-  .hr-side > * { flex: none; }
+    align-items: center; gap: 6px; padding: 8px 10px; overflow: visible;
+    white-space: nowrap; }
   .hr-side .brand { padding: 0 4px 0 2px; }
   .hr-side .brand > span { display: none; }   /* оставляем только знак */
   .hr-side a { padding: 9px 12px; font-size: 14px; }
-  .hr-side .who { margin: 0; padding: 0 4px 0 10px; font-size: 11.5px; }
-  .hr-side .who br { display: none; }
-  .hr-side .who button { margin-left: 8px; }
+  .hr-side .hr-nav { flex-direction: row; gap: 6px; flex: 1; min-width: 0;
+    overflow-x: auto; scrollbar-width: none; }
+  .hr-side .hr-nav::-webkit-scrollbar { display: none; }
+  .hr-side .hr-nav a { flex: none; }
+  .hr-side .who { margin: 0; padding: 0 0 0 8px; font-size: 11.5px;
+    flex-direction: row; align-items: center; gap: 8px; flex: none; }
+  .hr-side .who .acct { display: none; }          /* на узком экране важен только выход */
+  .hr-side .who .logout { padding: 8px 12px; font-size: 13px; min-height: 38px; }
   .hr-main { padding: 16px 14px 110px; }
   .hr-main h1 { font-size: 22px; }
   .toolbar { gap: 8px; }

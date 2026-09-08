@@ -37,34 +37,35 @@ export function EmployeeCard() {
     } catch { toast('Не удалось выполнить', 'warn'); }
   }
 
-  async function showInvite() {
-    const r = await post<{ invite_url: string; login: string }>(`/employees/${id}/invite`);
-    setModal({
-      title: 'Ссылка-приглашение',
+  /** Всё, что нужно передать сотруднику, — одним экраном: адрес, логин, пароль. */
+  async function showAccess() {
+    const inv = await post<{ invite_url: string; login: string }>(`/employees/${id}/invite`);
+    const render = (pw?: string) => ({
+      title: 'Доступ сотрудника',
       body: (
         <div className="stack" style={{ fontSize: 14 }}>
-          <p>Передайте сотруднику:</p>
-          <div className="banner info"><b>Логин:</b> <span style={{ fontFamily: 'monospace' }}>{r.login}</span></div>
-          <div className="banner info"><b>Ссылка:</b> {r.invite_url}</div>
-          <p className="muted" style={{ fontSize: 13 }}>Пароль сотрудник получает отдельно (кнопка «сбросить пароль»).</p>
+          <p className="muted" style={{ fontSize: 13 }}>Передайте сотруднику эти три строки.</p>
+          <div className="banner info"><b>Адрес:</b> {inv.invite_url}</div>
+          <div className="banner info"><b>Логин:</b>{' '}
+            <span style={{ fontFamily: 'monospace' }}>{inv.login}</span></div>
+          {pw
+            ? <div className="banner ok"><b>Пароль:</b>{' '}
+                <span style={{ fontFamily: 'monospace', fontSize: 16 }}>{pw}</span>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Скопируйте — больше он не покажется.
+                </div>
+              </div>
+            : <button className="btn sm" onClick={async () => {
+                if (!confirm('Задать сотруднику новый пароль? Старый перестанет работать.')) return;
+                const r = await post<{ password: string }>(`/employees/${id}/reset-password`);
+                setModal(render(r.password));
+              }}>Сбросить пароль</button>}
         </div>
       ),
     });
+    setModal(render());
   }
 
-  async function resetPw() {
-    if (!confirm('Сбросить пароль сотруднику? Старый перестанет работать.')) return;
-    const r = await post<{ password: string }>(`/employees/${id}/reset-password`);
-    setModal({
-      title: 'Новый пароль',
-      body: (
-        <div className="stack">
-          <div className="banner ok" style={{ fontSize: 18, fontFamily: 'monospace', textAlign: 'center' }}>{r.password}</div>
-          <p className="muted" style={{ fontSize: 13 }}>Скопируйте и передайте сотруднику. Больше он не показывается.</p>
-        </div>
-      ),
-    });
-  }
 
   if (loading) return <Loader />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -93,13 +94,10 @@ export function EmployeeCard() {
               <dt>Логин</dt>
               <dd style={{ fontFamily: 'monospace' }}>
                 {data.login}
-                {data.stage !== 'archived' && <>
-                  {'  '}
-                  <button className="btn ghost sm" style={{ padding: '2px 8px', marginLeft: 6 }}
-                    onClick={() => showInvite()}>ссылка-приглашение</button>
-                  <button className="btn ghost sm" style={{ padding: '2px 8px', marginLeft: 4 }}
-                    onClick={() => resetPw()}>сбросить пароль</button>
-                </>}
+                {data.stage !== 'archived' && (
+                  <button className="btn ghost sm" style={{ padding: '2px 10px', marginLeft: 8 }}
+                    onClick={() => showAccess()}>Доступ сотрудника</button>
+                )}
               </dd>
               <dt>Дата выхода</dt><dd>{fmtDate(data.start_date)}</dd>
               <dt>Пре-онбординг</dt><dd>{data.pre_onboarding.viewed} из {data.pre_onboarding.total} {data.pre_onboarding.done && '· пройден ✓'}</dd>
