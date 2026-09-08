@@ -1,6 +1,6 @@
 /* Проверка изоляции снимком: правки каталога НЕ ломают того, кто уже учится.
    Запуск при живом сервере: npx tsx scripts/e2e-snapshot.ts */
-const B = 'http://localhost:3001/api/v1';
+const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
 async function j(p: string, o: any = {}): Promise<{ s: number; d: any }> {
   const r = await fetch(B + p, {
     method: o.method ?? 'GET',

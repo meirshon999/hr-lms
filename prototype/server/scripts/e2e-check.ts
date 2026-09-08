@@ -1,6 +1,6 @@
 /* Ручной сквозной тест логики (не входит в прод). Запуск при живом сервере:
    npx tsx src/e2e-check.ts */
-const B = 'http://localhost:3001/api/v1';
+const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
 
 async function j(p: string, o: any = {}): Promise<{ s: number; d: any }> {
   const r = await fetch(B + p, {

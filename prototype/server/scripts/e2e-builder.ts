@@ -1,5 +1,5 @@
 /* Сквозной тест конструктора. Запуск при живом сервере: npx tsx src/e2e-builder.ts */
-const B = 'http://localhost:3001/api/v1';
+const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
 async function j(p: string, o: any = {}): Promise<{ s: number; d: any }> {
   const r = await fetch(B + p, {
     method: o.method ?? 'GET',
