@@ -31,7 +31,13 @@ npm install && npm run build && npm start   # в папке prototype/
 
 1. github.com → **New repository** → имя `peg-hr-lms` → **Private** → Create.
    Ничего не добавлять (ни README, ни .gitignore).
-2. В папке проекта:
+2. Скопировать адрес репозитория и выполнить в папке проекта одну команду:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\push-github.ps1 https://github.com/ЛОГИН/peg-hr-lms.git
+```
+
+Скрипт сам добавит remote, переименует ветку и отправит. Вручную то же самое:
 
 ```bash
 git remote add origin https://github.com/<логин>/peg-hr-lms.git
@@ -108,4 +114,6 @@ npx -y cloudflared tunnel --url http://localhost:3001   # терминал 2
 - [ ] `/docs` отдаёт Swagger
 - [ ] Ссылка прогрета за 5 минут до начала
 - [ ] Туннель наготове как запасной
-- [ ] Сценарий показа — кнопка **«Сценарий»** на экране входа
+- [ ] Сценарий показа — `DEMO.md` (кнопка **«Сценарий»** есть и в самом приложении)
+- [ ] Локальный запуск проверен: двойной клик по `START-DEMO.bat`
+- [ ] Скриншоты `screenshots/` под рукой — если стенд не откроется

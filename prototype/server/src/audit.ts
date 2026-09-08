@@ -2,9 +2,10 @@ import { all, run, uuid } from './db.ts';
 import { stamp } from './clock.ts';
 
 /** Постоянный журнал действий HR/админа (в отличие от оперативной панели «События»). */
-export function audit(actorLogin: string, action: string, employeeId: string | null, detail = '') {
+/** `ts` задаётся явно только для демо-данных: сид воспроизводит прошлые действия HR. */
+export function audit(actorLogin: string, action: string, employeeId: string | null, detail = '', ts = stamp()) {
   run('INSERT INTO audit_log (id, ts, actor_login, action, employee_id, detail) VALUES (?,?,?,?,?,?)',
-    uuid(), stamp(), actorLogin, action, employeeId, detail);
+    uuid(), ts, actorLogin, action, employeeId, detail);
 }
 
 export function auditFor(employeeId: string) {

@@ -2,6 +2,7 @@ import { db, migrate, one, run, uuid, wipe } from './db.ts';
 import { hashPassword } from './auth.ts';
 import { stamp, today } from './clock.ts';
 import { markLessonPassedIfReady, takePreSnapshot, tryOpenOnboarding } from './domain.ts';
+import { audit } from './audit.ts';
 import { clearEvents } from './events.ts';
 import { attestationBlockOf, findLesson, preSnapshotOf, snapshotOf } from './snapshot.ts';
 
@@ -26,7 +27,7 @@ function addQuestions(testId: string, qs: Q[]) {
       uuid(), testId, i + 1, q.text, JSON.stringify(q.options), q.correct));
 }
 
-function buildTrajectory(def: TrajectoryDef): { positionId: string; lessonIds: string[]; attBlockId: string | null } {
+function buildTrajectory(def: TrajectoryDef): Traj {
   const posId = uuid();
   run('INSERT INTO positions (id, name) VALUES (?, ?)', posId, def.position);
   const trajId = uuid();
@@ -67,7 +68,7 @@ function buildTrajectory(def: TrajectoryDef): { positionId: string; lessonIds: s
     run('INSERT INTO tests (id, block_id, pass_mark_pct) VALUES (?,?,70)', attTestId, attBlockId);
     addQuestions(attTestId, def.attestation);
   }
-  return { positionId: posId, lessonIds, attBlockId: def.attestation ? attBlockId : null };
+  return { positionId: posId, positionName: def.position, lessonIds, attBlockId: def.attestation ? attBlockId : null };
 }
 
 // ---- общие тексты пре-онбординга ----
@@ -403,7 +404,7 @@ function passLesson(empId: string, lessonId: string) {
   markLessonPassedIfReady(empId, lessonId);
 }
 
-type Traj = { positionId: string; lessonIds: string[]; attBlockId: string | null };
+type Traj = { positionId: string; positionName: string; lessonIds: string[]; attBlockId: string | null };
 type TargetState = 'intern' | 'intern-ready' | 'onboarding' | 'onboarding-overdue' | 'completed' | 'archived';
 
 const days = (n: number) => {
@@ -426,6 +427,9 @@ function mkEmp(o: {
 }) {
   const start = days(o.startOffset ?? 0);
   const empId = createEmployee({ login: o.login, name: o.name, positionId: o.traj.positionId, phone: o.phone, startDate: start });
+  // журнал HR: сид повторяет те же записи, что оставили бы роуты
+  audit('hr', 'hire', empId, `${o.name}, ${o.traj.positionName}, выход ${start}`,
+    addDaysStr(start, -1) + 'T10:15:00Z');
 
   if (o.state === 'intern') return empId;
   viewAllPre(empId); // все остальные состояния прошли пре-онбординг
@@ -433,6 +437,7 @@ function mkEmp(o: {
 
   run('UPDATE employees SET internship_passed = 1 WHERE id = ?', empId);
   tryOpenOnboarding(empId);
+  audit('hr', 'internship_passed', empId, 'онбординг открыт', addDaysStr(start, 3) + 'T18:40:00Z');
 
   const openedAt = o.state === 'completed' ? days((o.startOffset ?? -20) + 4)
     : o.state === 'onboarding-overdue' ? days(-18) : days((o.startOffset ?? -3) + 2);
@@ -444,8 +449,10 @@ function mkEmp(o: {
 
   if (o.state === 'completed')
     completeAttestation(empId, addDaysStr(openedAt, 8) + 'T15:00:00Z');
-  if (o.state === 'archived')
+  if (o.state === 'archived') {
     run(`UPDATE employees SET stage = 'archived', archived_at = ? WHERE id = ?`, days(-2) + 'T12:00:00Z', empId);
+    audit('hr', 'archive', empId, '', days(-2) + 'T12:00:00Z');
+  }
 
   return empId;
 }
