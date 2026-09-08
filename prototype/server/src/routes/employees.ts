@@ -112,7 +112,10 @@ export default async function employeeRoutes(app: FastifyInstance) {
     const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
     if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
     const u = one<{ login: string }>('SELECT login FROM users WHERE employee_id = ?', e.id);
-    return { invite_url: 'http://localhost:5173/#/login', login: u?.login ?? null };
+    // адрес берём из запроса: на боевом стенде это его домен, а не localhost
+    const origin = (req.headers.origin as string)
+      || `${(req.headers['x-forwarded-proto'] as string) ?? req.protocol}://${req.headers.host}`;
+    return { invite_url: `${origin}/#/login`, login: u?.login ?? null };
   });
 
   app.post('/employees/:id/internship-passed', async (req, reply) => {
