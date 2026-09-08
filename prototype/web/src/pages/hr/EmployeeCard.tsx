@@ -67,7 +67,7 @@ export function EmployeeCard() {
   }
 
 
-  if (loading) return <Loader />;
+  if (loading && !data) return <Loader />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return null;
 

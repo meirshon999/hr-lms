@@ -178,6 +178,31 @@ input, textarea, select { font: inherit; color: var(--text); }
 
 .result { text-align: center; padding: 20px 8px; }
 .result .big { font-family: 'Playfair Display', serif; font-size: 40px; }
+.result .score { font-family: 'Playfair Display', serif; line-height: 1; }
+.result .score b { font-size: 46px; }
+.result .score span { font-size: 22px; opacity: .65; margin-left: 4px; }
+.result .score-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.result .wrong-list { text-align: left; background: #fff; border: 1px solid var(--line-warm);
+  border-radius: 8px; padding: 12px 14px; margin-top: 14px; }
+.result .wrong-list .h { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
+.result .wrong-list ol { margin: 0; padding-left: 20px; font-size: 13.5px; }
+.result .wrong-list li { margin-bottom: 4px; }
+
+/* ---------- файлы: выбор в конструкторе и просмотр PDF ---------- */
+.filepick .hint { display: block; font-size: 12.5px; margin-top: 6px; }
+.filepick .up .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.filepick .up .track i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.filepick .up .muted { font-size: 12.5px; display: block; margin-top: 6px; }
+.filepick .have { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filepick .have .ico { width: 32px; height: 32px; flex: none; display: grid; place-items: center;
+  background: #f0ebe4; border-radius: 6px; }
+.filepick .have .tx { flex: 1; min-width: 120px; font-size: 13.5px; line-height: 1.3; }
+.filepick .have .tx a { display: block; font-size: 12.5px; }
+
+.pdfview .frame { width: 100%; height: 46vh; min-height: 260px; border: 1px solid var(--line-warm);
+  border-radius: 8px; background: #fff; }
+.pdfview .fallback { padding: 24px; text-align: center; color: var(--muted); font-size: 13.5px; }
+.player .stage.vid { width: 100%; height: auto; max-height: 52vh; background: #000; display: block; }
 .result.ok .big { color: var(--success); }
 .result.fail .big { color: var(--error); }
 

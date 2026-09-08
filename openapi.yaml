@@ -440,6 +440,49 @@ paths:
       summary: В архив (user.is_active = false, данные сохраняются)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: "{ ok: true }" } }
+  /files:
+    post:
+      tags: [files]
+      summary: Загрузить файл (видео, PDF, картинка) — только hr/admin
+      description: >
+        multipart/form-data с полем file. Ограничения: mp4, webm, mov, pdf, png, jpg;
+        размер задаётся переменной MAX_UPLOAD_MB (по умолчанию 60).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201": { description: "{ id, url, kind, orig_name, mime, size_bytes }" }
+        "413": { $ref: '#/components/responses/Err' }
+        "415": { $ref: '#/components/responses/Err' }
+    get:
+      tags: [files]
+      summary: Список загруженных файлов (hr/admin)
+      responses:
+        "200": { description: "{ items: [...] }" }
+  /files/{id}:
+    get:
+      tags: [files]
+      summary: Отдать файл
+      description: >
+        Без заголовка авторизации: video и object его не отправляют. Защита —
+        неугадываемый uuid. Поддерживается Range для перемотки видео.
+        В проде заменить на подписанные ссылки или отдачу из хранилища платформы.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: содержимое файла }
+        "206": { description: часть файла (Range) }
+        "404": { $ref: '#/components/responses/Err' }
+    delete:
+      tags: [files]
+      summary: Удалить файл (hr/admin)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok: true }" }
   /employees/{id}/unarchive:
     post:
       tags: [employees]

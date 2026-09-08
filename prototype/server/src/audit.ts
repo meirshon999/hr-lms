@@ -33,6 +33,7 @@ export const ACTION_LABEL: Record<string, string> = {
   edit_profile: 'Изменил профиль',
   reset_password: 'Сбросил пароль',
   invite: 'Показал ссылку-приглашение',
+  upload_file: 'Загрузил файл',
   publish: 'Опубликовал траекторию',
   unpublish: 'Снял траекторию с публикации',
 };

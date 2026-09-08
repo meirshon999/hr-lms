@@ -6,6 +6,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const PORT = Number(process.env.PORT ?? 3001);
 export const DB_PATH = process.env.DB_PATH ?? join(__dirname, '..', 'lms.db');
 
+/** Куда кладём загруженные HR файлы. В проде — хранилище платформы (S3 и т.п.). */
+export const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(__dirname, '..', 'uploads');
+export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 60);
+
 /** Часовой пояс компании — все «сегодня» и дедлайны считаются в нём, не в UTC. */
 export const TZ = process.env.TZ_LMS ?? 'Asia/Almaty';
 

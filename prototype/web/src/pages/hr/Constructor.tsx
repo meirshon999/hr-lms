@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { del, get, patch, post, put, ApiError } from '../../api';
 import { useAsync, useBump, Loader, ErrorBox, useToast } from '../../lib';
 import { InlineAdd, EditableTitle, MoveBtns, reordered } from '../../components/inline';
+import { FilePicker } from '../../components/FilePicker';
 import { MaterialForm } from '../../components/MaterialForm';
 import { TestEditor } from '../../components/TestEditor';
 import { ConstructorPreview } from '../../components/ConstructorPreview';
@@ -70,7 +71,7 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
   );
   const refresh = () => { reload(); onChange(); };
 
-  if (loading) return <Loader />;
+  if (loading && !data) return <Loader />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return null;
 
@@ -140,9 +141,17 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
                 <EditableTitle value={it.title} onSave={(v) => patch(`/pre-onboarding/${it.id}`, { title: v }).then(refresh)} />
                 <button className="btn danger sm" onClick={() => del(`/pre-onboarding/${it.id}`).then(refresh)}>✕</button>
               </div>
-              {it.content_type === 'text' && (
+              {it.content_type === 'text' ? (
                 <textarea defaultValue={it.text_body ?? ''} rows={2} style={{ width: '100%', marginTop: 8 }}
                   onBlur={(e) => patch(`/pre-onboarding/${it.id}`, { text_body: e.target.value }).then(refresh)} />
+              ) : (
+                <div style={{ marginTop: 8 }}>
+                  <FilePicker
+                    kind={it.content_type === 'video' ? 'video' : 'pdf'}
+                    value={it.file_url}
+                    onChange={(url) => patch(`/pre-onboarding/${it.id}`, { file_url: url }).then(refresh)}
+                  />
+                </div>
               )}
             </div>
           ))}
@@ -151,7 +160,7 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
               await post(`/trajectories/${positionId}/pre-onboarding`, {
                 title, content_type: type,
                 text_body: type === 'text' ? 'Текст материала…' : null,
-                file_url: type !== 'text' ? 'demo:file' : null,
+                file_url: null,   // файл выбирается отдельно, ссылок-заглушек больше нет
               });
               refresh();
             }} />

@@ -5,6 +5,7 @@ import { useAsync, useBump, ErrorBox, SkeletonLesson, useToast } from '../../lib
 import { Phone } from '../../components/Phone';
 import { TestRunner } from '../../components/TestRunner';
 import { VideoPlayer } from '../../components/VideoPlayer';
+import { PdfView } from '../../components/PdfView';
 
 interface LessonDto {
   id: string; title: string; status: string; material_done: boolean; video_pct: number;
@@ -33,7 +34,8 @@ export function Lesson() {
     if (!data) return;
     setVideoPct(data.video_pct);
     setStep(data.material_done && data.test ? 'test' : 'material');
-    setScrolledEnd(data.material?.content_type !== 'text');
+    // текст засчитывается прокруткой до конца, pdf — открытием; видео идёт по проценту
+    setScrolledEnd(data.material?.content_type === 'video');
   }, [data?.id, data?.material_done]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
@@ -61,7 +63,9 @@ export function Lesson() {
     } finally { setBusy(false); }
   }
 
-  if (loading) return <Phone hello="Урок" back><SkeletonLesson /></Phone>;
+  // скелетон только на первой загрузке: bump() после ответа не должен
+  // размонтировать TestRunner и стирать экран результата
+  if (loading && !data) return <Phone hello="Урок" back><SkeletonLesson /></Phone>;
   if (error) return <Phone hello="Урок" back><ErrorBox error={error} onRetry={reload} /></Phone>;
   if (!data) return null;
 
@@ -69,8 +73,7 @@ export function Lesson() {
   const needPct = m?.min_watch_pct ?? 90;
   const materialReady =
     m?.content_type === 'video' ? videoPct >= needPct
-      : m?.content_type === 'text' ? scrolledEnd
-        : true;
+      : scrolledEnd;   // текст — дочитан до конца, pdf — открыт
 
   const action = step === 'material' && !data.material_done ? (
     <button className="btn block" disabled={!materialReady || busy} onClick={materialDone}>
@@ -83,7 +86,9 @@ export function Lesson() {
   ) : undefined;
 
   const hint = step === 'material' && !materialReady
-    ? (m?.content_type === 'video' ? `Досмотрите видео до ${needPct}%` : 'Дочитайте материал до конца')
+    ? (m?.content_type === 'video' ? `Досмотрите видео до ${needPct}%`
+      : m?.content_type === 'pdf' ? 'Откройте документ'
+        : 'Дочитайте материал до конца')
     : undefined;
 
   return (
@@ -110,6 +115,7 @@ export function Lesson() {
           {m?.content_type === 'video' && (
             <VideoPlayer
               lessonId={id}
+              src={m.file_url}
               minWatchPct={m.min_watch_pct}
               initialPct={data.video_pct}
               onProgress={setVideoPct}
@@ -123,10 +129,7 @@ export function Lesson() {
           )}
           {m?.content_type === 'pdf' && (
             <div className="material">
-              <div className="video-stub" style={{ padding: 30 }}>
-                <div className="play">⬇</div>
-                <div>PDF-документ (демо)</div>
-              </div>
+              <PdfView src={m.file_url} onOpened={() => setScrolledEnd(true)} />
             </div>
           )}
           {data.material_done && (

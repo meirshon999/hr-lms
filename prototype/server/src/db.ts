@@ -139,6 +139,17 @@ CREATE TABLE IF NOT EXISTS test_attempts (
   submitted_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS files (
+  id          TEXT PRIMARY KEY,
+  orig_name   TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  kind        TEXT NOT NULL,          -- video | pdf | image
+  ext         TEXT NOT NULL,
+  size_bytes  INTEGER NOT NULL,
+  uploaded_by TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   ts          TEXT NOT NULL,
@@ -170,7 +181,7 @@ export function wipe() {
   const tables = [
     'audit_log', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lessons', 'blocks', 'pre_onboarding_items',
-    'trajectories', 'positions', 'users', 'app_state',
+    'trajectories', 'positions', 'users', 'app_state', 'files',
   ];
   db.exec('PRAGMA foreign_keys = OFF;');
   for (const t of tables) db.exec(`DELETE FROM ${t};`);

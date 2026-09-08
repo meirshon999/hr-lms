@@ -161,11 +161,20 @@ export function gradeTest(employeeId: string, testId: string, answers: Answer[])
   const test = snap ? findTest(snap, testId) : null;
   if (!test) throw new Error('test_not_in_snapshot');
   const byId = new Map(answers.map((a) => [a.question_id, a.option_index]));
-  let correct = 0;
-  for (const q of test.questions) if (byId.get(q.question_id) === q.correct_index) correct++;
+  // По каждому вопросу отдаём только «верно/неверно» — без правильного варианта:
+  // человек должен вернуться к материалу, а не запомнить ответ с экрана.
+  const results = test.questions.map((q) => ({
+    question_id: q.question_id,
+    text: q.text,
+    correct: byId.get(q.question_id) === q.correct_index,
+  }));
+  const correct = results.filter((r) => r.correct).length;
   const total = test.questions.length;
   const score_pct = total ? Math.round((correct / total) * 100) : 0;
-  return { score_pct, passed: score_pct >= test.pass_mark_pct, total, correct, pass_mark_pct: test.pass_mark_pct };
+  return {
+    score_pct, passed: score_pct >= test.pass_mark_pct,
+    total, correct, pass_mark_pct: test.pass_mark_pct, results,
+  };
 }
 
 export function recordAttempt(employeeId: string, testId: string, answers: Answer[]) {

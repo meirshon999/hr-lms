@@ -41,6 +41,39 @@ export async function api<T = any>(
   return data as T;
 }
 
+export interface Uploaded {
+  id: string; url: string; kind: 'video' | 'pdf' | 'image';
+  orig_name: string; mime: string; size_bytes: number;
+}
+
+/**
+ * Загрузка файла. content-type не ставим — браузер сам проставит multipart
+ * с boundary; если задать вручную, сервер не разберёт тело.
+ * onProgress работает через XHR: у fetch прогресса отправки нет.
+ */
+export function upload(file: File, onProgress?: (pct: number) => void): Promise<Uploaded> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', BASE + '/files');
+    const t = token();
+    if (t) xhr.setRequestHeader('authorization', `Bearer ${t}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let data: any = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data as Uploaded);
+      const e = data?.error ?? {};
+      reject(new ApiError(xhr.status, e.code ?? 'error', e.message ?? 'Не удалось загрузить файл'));
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'network', 'Сеть недоступна'));
+    xhr.send(fd);
+  });
+}
+
 export const get = <T = any>(p: string) => api<T>(p);
 export const post = <T = any>(p: string, body?: unknown) => api<T>(p, { method: 'POST', body });
 export const put = <T = any>(p: string, body?: unknown) => api<T>(p, { method: 'PUT', body });

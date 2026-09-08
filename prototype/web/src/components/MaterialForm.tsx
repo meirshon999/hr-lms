@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { put } from '../api';
+import { FilePicker } from './FilePicker';
 
 interface Material {
   content_type: 'text' | 'video' | 'pdf';
@@ -23,7 +24,7 @@ export function MaterialForm({
       await put(`/lessons/${lessonId}/material`, {
         content_type: m.content_type,
         text_body: m.content_type === 'text' ? (m.text_body || 'Текст материала…') : null,
-        file_url: m.content_type !== 'text' ? (m.file_url || 'demo:file') : null,
+        file_url: m.content_type !== 'text' ? m.file_url : null,
         min_watch_pct: m.content_type === 'video' ? (m.min_watch_pct ?? 80) : null,
       });
       setOk(true); setTimeout(() => setOk(false), 1500);
@@ -37,8 +38,8 @@ export function MaterialForm({
         <span>Тип материала</span>
         <select value={m.content_type} onChange={(e) => setM({ ...m, content_type: e.target.value as any })}>
           <option value="text">Текст</option>
-          <option value="video">Видео (заглушка)</option>
-          <option value="pdf">PDF (заглушка)</option>
+          <option value="video">Видео</option>
+          <option value="pdf">PDF</option>
         </select>
       </label>
       {m.content_type === 'text' ? (
@@ -48,11 +49,14 @@ export function MaterialForm({
         </label>
       ) : (
         <>
-          <label className="field" style={{ marginBottom: 10 }}>
-            <span>Ссылка на файл (в демо — любая строка)</span>
-            <input value={m.file_url ?? ''} placeholder="demo:welcome-video"
-              onChange={(e) => setM({ ...m, file_url: e.target.value })} />
-          </label>
+          <div className="field" style={{ marginBottom: 10 }}>
+            <span>Файл</span>
+            <FilePicker
+              kind={m.content_type as 'video' | 'pdf'}
+              value={m.file_url}
+              onChange={(url) => setM({ ...m, file_url: url })}
+            />
+          </div>
           {m.content_type === 'video' && (
             <label className="field" style={{ marginBottom: 10 }}>
               <span>Нужно посмотреть, %</span>
@@ -62,7 +66,12 @@ export function MaterialForm({
           )}
         </>
       )}
-      <button className="btn sm" disabled={busy} onClick={save}>
+      {m.content_type !== 'text' && !m.file_url && (
+        <div className="banner warn mt8" style={{ fontSize: 12.5 }}>
+          Выберите файл — без него материал не сохранится.
+        </div>
+      )}
+      <button className="btn sm" disabled={busy || (m.content_type !== 'text' && !m.file_url)} onClick={save}>
         {busy ? 'Сохраняем…' : ok ? 'Сохранено ✓' : 'Сохранить материал'}
       </button>
     </div>
