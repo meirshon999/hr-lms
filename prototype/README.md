@@ -82,6 +82,7 @@ cd server
 npx tsx scripts/e2e-check.ts     # сквозной путь сотрудника (нужен запущенный сервер)
 npx tsx scripts/e2e-builder.ts   # конструктор: создание, валидация публикации
 npx tsx scripts/e2e-snapshot.ts  # снимок: ломаем каталог — учащийся доходит до конца
+npx tsx scripts/e2e-guards.ts    # тупики: неполная траектория снимается с публикации, публикация догоняет ждущих
 ```
 
 HTTP-контракт (все эндпоинты) — `../openapi.yaml` (OpenAPI 3.1). Прототип

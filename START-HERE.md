@@ -93,6 +93,7 @@ npm run build && npm start      # всё на :3001
 npx tsx scripts/e2e-check.ts      # весь путь сотрудника: найм → аттестация
 npx tsx scripts/e2e-builder.ts    # конструктор: создание, валидация публикации
 npx tsx scripts/e2e-snapshot.ts   # снимок: ломаем каталог — учащийся всё равно доходит
+npx tsx scripts/e2e-guards.ts     # тупики: сломанная траектория не пускает новых, починка догоняет ждущих
 ```
 
 ---

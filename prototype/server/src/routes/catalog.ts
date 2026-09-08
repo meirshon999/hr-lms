@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, one, run, uuid } from '../db.ts';
 import { authRequired, err } from '../auth.ts';
-import { trajectoryOfPosition } from '../domain.ts';
+import { trajectoryOfPosition, tryOpenOnboarding } from '../domain.ts';
 import { audit } from '../audit.ts';
+import { emit } from '../events.ts';
 import { positionDto, trajectoryTree } from '../serializers.ts';
 
 const actor = (req: any) => req?.user?.login ?? 'system';
@@ -63,8 +64,32 @@ function questionProblems(testId: string, label: string): string[] {
   return out;
 }
 
+/**
+ * Активная траектория не может быть неполной (SPEC C-2).
+ * Правка, ломающая полноту, автоматически снимает траекторию с публикации:
+ * иначе следующий нанятый получит снимок без уроков и застрянет навсегда.
+ * Тех, кто уже учится, это не трогает — у них свой снимок (R-8).
+ */
+function revalidateActiveTrajectories(actorLogin: string) {
+  for (const t of all<{ id: string; position_id: string }>(
+    `SELECT id, position_id FROM trajectories WHERE status = 'active'`)) {
+    const problems = publishProblems(t.id);
+    if (!problems.length) continue;
+    run(`UPDATE trajectories SET status = 'draft' WHERE id = ?`, t.id);
+    const pos = one<{ name: string }>('SELECT name FROM positions WHERE id = ?', t.position_id);
+    audit(actorLogin, 'unpublish', null, `«${pos?.name}» снята автоматически: ${problems[0]}`);
+    emit('траектория снята с публикации', `«${pos?.name}» — ${problems[0]}`);
+  }
+}
+
 export default async function catalogRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authRequired('hr', 'admin'));
+
+  // после любой успешной правки каталога проверяем, не сломалась ли активная траектория
+  app.addHook('onResponse', async (req, reply) => {
+    if (req.method === 'GET' || reply.statusCode >= 300) return;
+    try { revalidateActiveTrajectories(actor(req)); } catch (e) { app.log.error(e); }
+  });
 
   // ---------- должности ----------
   app.get('/positions', async () =>
@@ -113,8 +138,20 @@ export default async function catalogRoutes(app: FastifyInstance) {
       return reply.code(422).send(err('trajectory_incomplete', 'Нельзя опубликовать', problems));
     run('UPDATE trajectories SET status = ? WHERE id = ?', 'active', traj.id);
     const pos = one<{ name: string }>('SELECT name FROM positions WHERE id = ?', (req.params as any).positionId);
-    audit(actor(req), 'publish', null, `Траектория «${pos?.name}»`);
-    return { ok: true, status: 'active' };
+
+    // Стажёры, прошедшие оба гейта, ждали именно публикации — открываем им онбординг.
+    // Без этого они зависают: гейты выполнены, а открыть их уже нечему.
+    const waiting = all<{ id: string }>(
+      `SELECT id FROM employees
+        WHERE position_id = ? AND stage = 'intern'
+          AND pre_onboarding_done = 1 AND internship_passed = 1`,
+      (req.params as any).positionId,
+    );
+    const opened = waiting.filter((w) => tryOpenOnboarding(w.id).opened).length;
+
+    audit(actor(req), 'publish', null,
+      `Траектория «${pos?.name}»` + (opened ? `; онбординг открыт: ${opened}` : ''));
+    return { ok: true, status: 'active', onboarding_opened: opened };
   });
 
   app.post('/trajectories/:positionId/unpublish', async (req) => {
