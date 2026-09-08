@@ -56,6 +56,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     location.hash = '#/login';
   }
 
+  // сеанс кончился (401 от любого запроса) — возвращаем на вход, а не
+  // оставляем полупустые экраны
+  useEffect(() => {
+    const onExpired = () => { setMe(null); location.hash = '#/login'; };
+    window.addEventListener('lms:unauthorized', onExpired);
+    return () => window.removeEventListener('lms:unauthorized', onExpired);
+  }, []);
+
   return (
     <Ctx.Provider value={{ me, loading, login, logout, refresh }}>
       {children}

@@ -35,6 +35,13 @@ export async function api<T = any>(
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
+    // Токен живёт 12 часов. Без этой ветки протухший токен давал 401 на каждый
+    // запрос, а экраны молча оставались пустыми — например список должностей
+    // в форме найма. Теперь сеанс честно завершается.
+    if (res.status === 401 && !path.startsWith('/auth/login')) {
+      setToken(null);
+      window.dispatchEvent(new CustomEvent('lms:unauthorized'));
+    }
     const e = data?.error ?? {};
     throw new ApiError(res.status, e.code ?? 'error', e.message ?? 'Ошибка', e.details);
   }
@@ -66,6 +73,7 @@ export function upload(file: File, onProgress?: (pct: number) => void): Promise<
       let data: any = null;
       try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* ignore */ }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(data as Uploaded);
+      if (xhr.status === 401) { setToken(null); window.dispatchEvent(new CustomEvent('lms:unauthorized')); }
       const e = data?.error ?? {};
       reject(new ApiError(xhr.status, e.code ?? 'error', e.message ?? 'Не удалось загрузить файл'));
     };

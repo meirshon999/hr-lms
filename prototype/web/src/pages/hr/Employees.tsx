@@ -96,7 +96,7 @@ const pct = (p: { passed: number; total: number }) => (p.total ? Math.round((p.p
 
 function AddEmployee({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const toast = useToast();
-  const { data: pos } = useAsync(() => get<{ items: Pos[] }>('/positions'), []);
+  const { data: pos, loading: posLoading, error: posError } = useAsync(() => get<{ items: Pos[] }>('/positions'), []);
   const [f, setF] = useState({
     full_name: '', position_id: '', phone: '+7', start_date: new Date().toISOString().slice(0, 10),
     login: '', password: '',
@@ -128,13 +128,24 @@ function AddEmployee({ onClose, onDone }: { onClose: () => void; onDone: () => v
           <input value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} required /></label>
         <label className="field"><span>Должность</span>
           <select value={f.position_id} onChange={(e) => setF({ ...f, position_id: e.target.value })} required>
-            <option value="">—</option>
+            <option value="">{posLoading ? 'Загружаем должности…' : '—'}</option>
             {pos?.items.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}{p.trajectory_status !== 'active' ? ' (черновик)' : ''}
               </option>
             ))}
-          </select></label>
+          </select>
+          {posError && (
+            <span className="banner warn" style={{ fontSize: 12.5, marginTop: 6 }}>
+              Не удалось загрузить должности. Обновите страницу или войдите заново.
+            </span>
+          )}
+          {!posLoading && !posError && pos?.items.length === 0 && (
+            <span className="banner warn" style={{ fontSize: 12.5, marginTop: 6 }}>
+              Должностей пока нет — создайте должность в «Конструкторе».
+            </span>
+          )}
+        </label>
         <div style={{ display: 'flex', gap: 10 }}>
           <label className="field" style={{ flex: 1 }}><span>Телефон</span>
             <input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} required /></label>
