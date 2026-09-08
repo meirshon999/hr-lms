@@ -10,6 +10,7 @@ interface Card {
   pre_onboarding: { done: boolean; viewed: number; total: number };
   onboarding_opened_at: string | null; onboarding_due_date: string | null; overdue: boolean;
   completed_at: string | null; archived_at: string | null; trajectory_status: string | null;
+  paused_at: string | null;
   blocks: { id: string; title: string; lessons: {
     id: string; title: string; status: string; material_done: boolean; test_attempts: number; passed_at: string | null;
   }[] }[];
@@ -25,9 +26,9 @@ export function EmployeeCard() {
   const [modal, setModal] = useState<null | { title: string; body: React.ReactNode }>(null);
   const [editing, setEditing] = useState(false);
 
-  async function act(path: string, ok: string) {
+  async function act(path: string, ok: string, body?: unknown) {
     try {
-      const r = await post<any>(`/employees/${id}/${path}`);
+      const r = await post<any>(`/employees/${id}/${path}`, body);
       if (r.deleted) { toast('Сотрудник удалён'); nav('/hr/employees'); bump(); return; }
       if (path === 'internship-passed' && !r.onboarding_opened)
         toast('Стажировка отмечена. Онбординг откроется после завершения пре-онбординга.', 'warn');
@@ -76,6 +77,7 @@ export function EmployeeCard() {
       <p className="subtitle">
         {data.position} · <span className={`pill stage-${data.stage}`}>{STAGE_LABEL[data.stage]}</span>
         {data.overdue && <> · <span className="pill overdue">Просрочено</span></>}
+        {data.paused_at && <> · <span className="pill">На паузе с {fmtDate(data.paused_at)}</span></>}
       </p>
 
       <div className="panel">
@@ -102,7 +104,8 @@ export function EmployeeCard() {
               <dt>Дата выхода</dt><dd>{fmtDate(data.start_date)}</dd>
               <dt>Пре-онбординг</dt><dd>{data.pre_onboarding.viewed} из {data.pre_onboarding.total} {data.pre_onboarding.done && '· пройден ✓'}</dd>
               {data.onboarding_opened_at && <><dt>Онбординг открыт</dt><dd>{fmtDate(data.onboarding_opened_at)}</dd></>}
-              {data.onboarding_due_date && <><dt>Срок</dt><dd>{fmtDate(data.onboarding_due_date)}</dd></>}
+              {data.onboarding_due_date && <><dt>Срок</dt>
+                <dd>{fmtDate(data.onboarding_due_date)}{data.paused_at && <span className="muted"> — заморожен</span>}</dd></>}
               {data.completed_at && <><dt>Завершил</dt><dd>{fmtDate(data.completed_at)}</dd></>}
             </dl>
           )}
@@ -157,6 +160,28 @@ export function EmployeeCard() {
               ))}
             </div>
           ))}
+          {data.stage === 'onboarding' && (
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap', margin: '4px 0 14px' }}>
+              {data.paused_at ? (
+                <button className="btn sm" onClick={() => act('resume', 'Онбординг возобновлён')}>
+                  Снять с паузы
+                </button>
+              ) : (
+                <button className="btn ghost sm" onClick={() => {
+                  if (confirm('Поставить онбординг на паузу? Пока стоит пауза, срок не идёт.'))
+                    act('pause', 'Онбординг на паузе');
+                }}>На паузу</button>
+              )}
+              <button className="btn ghost sm" onClick={() => {
+                const v = prompt('На сколько дней продлить срок?', '7');
+                const days = Number(v);
+                if (!v || !Number.isInteger(days) || days < 1 || days > 90)
+                  return v === null ? undefined : toast('Нужно целое число от 1 до 90', 'warn');
+                act('extend-deadline', `Срок продлён на ${days} дн.`, { days });
+              }}>Продлить срок</button>
+            </div>
+          )}
+
           <div className="block-h">Аттестация</div>
           {data.attestation.attempts.length === 0
             ? <p className="muted" style={{ fontSize: 13 }}>Попыток пока нет</p>
@@ -175,7 +200,13 @@ export function EmployeeCard() {
         }}>В архив</button>
       )}
       {data.stage === 'archived' && (
-        <div className="banner info">Сотрудник в архиве с {fmtDate(data.archived_at)}. Вход закрыт.</div>
+        <div className="stack" style={{ gap: 10 }}>
+          <div className="banner info">Сотрудник в архиве с {fmtDate(data.archived_at)}. Вход закрыт.</div>
+          <button className="btn sm" onClick={() => {
+            if (confirm(`Вернуть «${data.full_name}» из архива? Доступ откроется, прогресс обучения сохранён.`))
+              act('unarchive', 'Возвращён из архива');
+          }}>Вернуть из архива</button>
+        </div>
       )}
 
       <AuditPanel employeeId={data.id} />

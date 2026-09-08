@@ -1,5 +1,5 @@
 import { ONBOARDING_DAYS } from './config.ts';
-import { addDays, isAfter, stamp, today } from './clock.ts';
+import { addDays, daysBetween, isAfter, stamp, today } from './clock.ts';
 import { all, one, run, uuid } from './db.ts';
 import { emit } from './events.ts';
 import {
@@ -209,6 +209,54 @@ export function archiveEmployee(employeeId: string) {
   run('UPDATE users SET is_active = 0 WHERE employee_id = ?', employeeId);
 }
 
+/**
+ * Возврат из архива. Этап восстанавливается по данным сотрудника, а не хранится
+ * отдельно: аттестация сдана → completed, снимок снят → onboarding, иначе intern.
+ * Прогресс никуда не девался — человек продолжает с того же места.
+ */
+export function unarchiveEmployee(employeeId: string): { stage: string } | null {
+  const e = one<any>('SELECT * FROM employees WHERE id = ?', employeeId);
+  if (!e || e.stage !== 'archived') return null;
+  const stage = e.completed_at ? 'completed' : e.snapshot_json ? 'onboarding' : 'intern';
+  run(`UPDATE employees SET stage = ?, archived_at = NULL WHERE id = ?`, stage, employeeId);
+  run('UPDATE users SET is_active = 1 WHERE employee_id = ?', employeeId);
+  emit('stage: archived → ' + stage, `${empName(employeeId)} — возвращён из архива`);
+  return { stage };
+}
+
+/** Продлить дедлайн онбординга на N дней. */
+export function extendDeadline(employeeId: string, days: number): { due: string } | null {
+  const e = one<any>('SELECT * FROM employees WHERE id = ?', employeeId);
+  if (!e || e.stage !== 'onboarding' || !e.onboarding_due_date) return null;
+  const due = addDays(e.onboarding_due_date, days);
+  run('UPDATE employees SET onboarding_due_date = ? WHERE id = ?', due, employeeId);
+  emit('дедлайн продлён', `${empName(employeeId)} — на ${days} дн., теперь до ${due}`);
+  return { due };
+}
+
+/**
+ * Пауза онбординга (больничный, отпуск). Учиться не мешаем — замораживаем только
+ * срок: пока стоит пауза, просрочка не считается, а при снятии дедлайн сдвигается
+ * ровно на число дней простоя.
+ */
+export function pauseOnboarding(employeeId: string): boolean {
+  const e = one<any>('SELECT * FROM employees WHERE id = ?', employeeId);
+  if (!e || e.stage !== 'onboarding' || e.paused_at) return false;
+  run('UPDATE employees SET paused_at = ? WHERE id = ?', today(), employeeId);
+  emit('онбординг на паузе', `${empName(employeeId)} — срок заморожен`);
+  return true;
+}
+
+export function resumeOnboarding(employeeId: string): { due: string; days: number } | null {
+  const e = one<any>('SELECT * FROM employees WHERE id = ?', employeeId);
+  if (!e || !e.paused_at) return null;
+  const days = Math.max(0, daysBetween(e.paused_at, today()));
+  const due = e.onboarding_due_date ? addDays(e.onboarding_due_date, days) : null;
+  run('UPDATE employees SET paused_at = NULL, onboarding_due_date = ? WHERE id = ?', due, employeeId);
+  emit('онбординг возобновлён', `${empName(employeeId)} — пауза ${days} дн., дедлайн до ${due}`);
+  return { due: due ?? '', days };
+}
+
 export function deleteEmployeeCompletely(employeeId: string) {
   const e = one<{ user_id: string }>('SELECT user_id FROM employees WHERE id = ?', employeeId);
   if (!e) return;
@@ -220,5 +268,6 @@ export function deleteEmployeeCompletely(employeeId: string) {
 // ---------- вычисляемое ----------
 
 export function isOverdue(e: any): boolean {
+  if (e.paused_at) return false; // на паузе срок не идёт
   return e.stage === 'onboarding' && !!e.onboarding_due_date && isAfter(today(), e.onboarding_due_date);
 }

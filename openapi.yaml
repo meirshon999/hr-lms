@@ -440,6 +440,47 @@ paths:
       summary: В архив (user.is_active = false, данные сохраняются)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: "{ ok: true }" } }
+  /employees/{id}/unarchive:
+    post:
+      tags: [employees]
+      summary: Вернуть из архива (этап восстанавливается по данным, прогресс сохранён)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok: true, stage }" }
+        "409": { $ref: '#/components/responses/Err' }
+  /employees/{id}/extend-deadline:
+    post:
+      tags: [employees]
+      summary: Продлить срок онбординга
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days]
+              properties:
+                days: { type: integer, minimum: 1, maximum: 90 }
+      responses:
+        "200": { description: "{ ok: true, onboarding_due_date }" }
+        "409": { $ref: '#/components/responses/Err' }
+  /employees/{id}/pause:
+    post:
+      tags: [employees]
+      summary: Поставить онбординг на паузу (болезнь, отпуск) — срок замораживается
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok: true }" }
+        "409": { $ref: '#/components/responses/Err' }
+  /employees/{id}/resume:
+    post:
+      tags: [employees]
+      summary: Снять с паузы — дедлайн сдвигается на длительность простоя
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok: true, paused_days, onboarding_due_date }" }
+        "409": { $ref: '#/components/responses/Err' }
   /employees/{id}/reset-password:
     post:
       tags: [employees]

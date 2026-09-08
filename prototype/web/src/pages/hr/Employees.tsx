@@ -7,6 +7,7 @@ import { useAsync, useBump, Loader, ErrorBox, fmtDate, STAGE_LABEL, useToast } f
 interface Row {
   id: string; full_name: string; position: string; position_id: string; phone: string;
   start_date: string; stage: string; onboarding_due_date: string | null; overdue: boolean;
+  paused?: boolean;
   progress: { passed: number; total: number };
 }
 interface Pos { id: string; name: string; trajectory_status: string; }
@@ -74,7 +75,9 @@ export function Employees() {
                   )}
                 </td>
                 <td data-label="Срок">
-                  {e.overdue
+                  {e.paused
+                    ? <span className="pill">На паузе</span>
+                    : e.overdue
                     ? <span className="pill overdue">Просрочено</span>
                     : <span className="muted" style={{ fontSize: 13 }}>{fmtDate(e.onboarding_due_date)}</span>}
                 </td>

@@ -94,6 +94,7 @@ npx tsx scripts/e2e-check.ts      # весь путь сотрудника: на
 npx tsx scripts/e2e-builder.ts    # конструктор: создание, валидация публикации
 npx tsx scripts/e2e-snapshot.ts   # снимок: ломаем каталог — учащийся всё равно доходит
 npx tsx scripts/e2e-guards.ts     # тупики: сломанная траектория не пускает новых, починка догоняет ждущих
+npx tsx scripts/e2e-hr-actions.ts # возврат из архива, продление срока, пауза онбординга
 ```
 
 ---

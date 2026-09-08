@@ -49,3 +49,8 @@ export function addDays(date: string, days: number): string {
 
 /** date1 > date2 ? (обе в формате YYYY-MM-DD) */
 export const isAfter = (date1: string, date2: string) => date1 > date2;
+
+/** Сколько календарных дней прошло от `from` до `to` (обе даты YYYY-MM-DD). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86_400_000);
+}

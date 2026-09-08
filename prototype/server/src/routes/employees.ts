@@ -5,8 +5,9 @@ import { all, one, run, uuid } from '../db.ts';
 import { authRequired, err, hashPassword } from '../auth.ts';
 import { addDays, stamp, today } from '../clock.ts';
 import {
-  archiveEmployee, deleteEmployeeCompletely, recomputePreOnboardingDone,
-  takePreSnapshot, trajectoryOfPosition, tryOpenOnboarding,
+  archiveEmployee, deleteEmployeeCompletely, extendDeadline, pauseOnboarding,
+  recomputePreOnboardingDone, resumeOnboarding, takePreSnapshot,
+  trajectoryOfPosition, tryOpenOnboarding, unarchiveEmployee,
 } from '../domain.ts';
 import { audit, auditFor } from '../audit.ts';
 import { emit } from '../events.ts';
@@ -140,5 +141,43 @@ export default async function employeeRoutes(app: FastifyInstance) {
     archiveEmployee(e.id);
     audit(actor(req), 'archive', e.id, '');
     return { ok: true };
+  });
+
+  app.post('/employees/:id/unarchive', async (req, reply) => {
+    const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
+    if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
+    const r = unarchiveEmployee(e.id);
+    if (!r) return reply.code(409).send(err('not_archived', 'Сотрудник не в архиве'));
+    audit(actor(req), 'unarchive', e.id, `возвращён на этап «${r.stage}»`);
+    return { ok: true, stage: r.stage };
+  });
+
+  app.post('/employees/:id/extend-deadline', async (req, reply) => {
+    const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
+    if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
+    const p = z.object({ days: z.number().int().min(1).max(90) }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'days — целое от 1 до 90'));
+    const r = extendDeadline(e.id, p.data.days);
+    if (!r) return reply.code(409).send(err('not_onboarding', 'Продлить можно только идущий онбординг'));
+    audit(actor(req), 'extend_deadline', e.id, `+${p.data.days} дн., до ${r.due}`);
+    return { ok: true, onboarding_due_date: r.due };
+  });
+
+  app.post('/employees/:id/pause', async (req, reply) => {
+    const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
+    if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
+    if (!pauseOnboarding(e.id))
+      return reply.code(409).send(err('cannot_pause', 'Пауза возможна только для идущего онбординга'));
+    audit(actor(req), 'pause', e.id, '');
+    return { ok: true };
+  });
+
+  app.post('/employees/:id/resume', async (req, reply) => {
+    const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
+    if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
+    const r = resumeOnboarding(e.id);
+    if (!r) return reply.code(409).send(err('not_paused', 'Онбординг не на паузе'));
+    audit(actor(req), 'resume', e.id, `пауза ${r.days} дн., дедлайн до ${r.due}`);
+    return { ok: true, paused_days: r.days, onboarding_due_date: r.due };
   });
 }

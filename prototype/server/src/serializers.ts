@@ -79,6 +79,7 @@ export function employeeRow(e: any) {
     id: e.id, full_name: e.full_name, position: pos?.name ?? '—', position_id: e.position_id,
     phone: e.phone, start_date: e.start_date, stage: e.stage,
     onboarding_due_date: e.onboarding_due_date, overdue: isOverdue(e),
+    paused: !!e.paused_at,
     progress: progressCounts(e.id),
   };
 }
@@ -124,6 +125,7 @@ export function employeeCard(e: any) {
     position_id: e.position_id,
     login: user?.login ?? null,
     stage: e.stage,
+    paused_at: e.paused_at ?? null,
     internship_passed: bool(e.internship_passed),
     pre_onboarding: {
       done: bool(e.pre_onboarding_done),

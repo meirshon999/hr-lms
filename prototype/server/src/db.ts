@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS employees (
   onboarding_due_date  TEXT,
   completed_at         TEXT,
   archived_at          TEXT,
+  -- пауза онбординга (болезнь/отпуск): пока стоит, дедлайн не идёт
+  paused_at            TEXT,
   created_at           TEXT NOT NULL,
   -- снимок структуры пре-онбординга (список id) — замораживается при найме
   pre_snapshot_json    TEXT,
@@ -148,8 +150,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_emp ON audit_log(employee_id);
 `;
 
+/** Добавляет колонку, если её ещё нет: SCHEMA идёт через CREATE TABLE IF NOT EXISTS
+ *  и на уже существующей базе новые поля сама не создаёт. */
+function addColumnIfMissing(table: string, column: string, decl: string) {
+  const cols = all<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
+}
+
 export function migrate() {
   db.exec(SCHEMA);
+  // пауза онбординга (болезнь/отпуск): дата постановки на паузу
+  addColumnIfMissing('employees', 'paused_at', 'TEXT');
 }
 
 /** Полный сброс: удаляет все данные (для кнопки «Сбросить демо»). */
