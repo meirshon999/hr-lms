@@ -8,14 +8,6 @@ uploads/
 .build-doc/
 *.log
 
-# посторонние файлы iiko-финансов — к LMS не относятся, в репозиторий не идут
-*.py
-!tools/*.py
-*.xlsx
-*.csv
-*.xml
-*.json
-!prototype/**/*.json
-!diagrams/**/*.json
-ANALYSIS.txt
-MEASURE.txt
+# Другая задача: выгрузки и скрипты iiko-финансов. К LMS отношения не имеют,
+# в репозиторий и в архив для коллеги не идут.
+iiko-финансы/
