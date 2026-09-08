@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PEG HR LMS v1 — логика приложения</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=PT+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bordo:#4A0F1E; --gold:#C6A15B; --bg:#FAF6F2; --surface:#fff;
+    --ink:#2A1A1E; --muted:#7c6f6f; --line:#e7dccf; --error:#C0392B; --success:#2E7D5B;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.62 "PT Sans",-apple-system,Segoe UI,Roboto,sans-serif}
+  .page{max-width:900px;margin:0 auto;padding:32px}
+  h1,h2,h3,h4{font-family:"Playfair Display",Georgia,serif;color:var(--bordo);line-height:1.25;font-weight:700}
+  h1{font-size:34px;margin:0 0 6px} h2{font-size:25px;margin:38px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--gold)}
+  h3{font-size:19px;margin:24px 0 8px;color:#6a2436} h4{font-size:16px;margin:16px 0 6px;font-family:"PT Sans",sans-serif;color:#6a2436}
+  p{margin:10px 0} ul,ol{margin:10px 0;padding-left:24px} li{margin:4px 0}
+  a{color:var(--bordo)}
+  code{font-family:ui-monospace,"SF Mono",Consolas,monospace;font-size:.88em;
+       background:#f1e8dc;padding:1px 5px;border-radius:4px}
+  pre{background:#2f1620;color:#f3e9dc;padding:14px 16px;border-radius:8px;overflow-x:auto}
+  pre code{background:none;color:inherit;padding:0}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14.5px;background:var(--surface)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#f4ecdf;font-family:"PT Sans",sans-serif}
+  blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--gold);background:#fff;color:#4a3b3f}
+  hr{border:0;border-top:1px solid var(--line);margin:26px 0}
+  .cover{min-height:60vh;display:flex;flex-direction:column;justify-content:center;
+         padding:60px 32px;border-bottom:3px solid var(--gold)}
+  .cover .kick{font-family:"PT Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;
+               color:var(--gold);font-weight:700;font-size:13px}
+  .cover h1{font-size:44px;margin:14px 0 10px}
+  .cover .sub{font-size:18px;color:var(--muted);max-width:560px}
+  .cover .meta{margin-top:34px;font-size:14px;color:var(--muted)}
+  .toc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 24px;margin:28px 0}
+  .toc h2{border:0;margin:0 0 8px;font-size:18px}
+  .toc ol{margin:0;padding-left:20px} .toc a{text-decoration:none}
+  .part{border-top:6px solid var(--bordo);margin-top:54px;padding-top:8px}
+  .part .plabel{font-family:"PT Sans",sans-serif;font-weight:700;letter-spacing:.14em;
+                text-transform:uppercase;color:var(--gold);font-size:12px}
+  figure.diagram{margin:22px 0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+  figure.diagram .svgwrap{overflow-x:auto}
+  figure.diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}
+  figure.diagram figcaption{margin-top:10px;font-size:13px;color:var(--muted);text-align:center;
+                            font-family:"PT Sans",sans-serif}
+  @media print{
+    .page{max-width:none;padding:0 6mm}
+    h2{break-after:avoid} h3{break-after:avoid}
+    figure.diagram,table,pre{break-inside:avoid}
+    .part{break-before:page}
+    .cover{min-height:auto;padding:40mm 6mm}
+    a{color:inherit;text-decoration:none}
+  }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="kick">Pingwin Premium · внутренний документ</div>
+  <h1>PEG HR LMS v1<br>логика приложения</h1>
+  <div class="sub">Система онбординга новых сотрудников. Как работает, что строить, как выглядят экраны.</div>
+  <div class="meta">Версия 1 · сентябрь 2026 · для ознакомления и ревью</div>
+</div>
+
+<div class="page">
+  <div class="toc">
+    <h2>Содержание</h2>
+    <ol>
+      <li><a href="#part-logic">Как работает</a> — идея, схемы, процессы</li>
+      <li><a href="#part-spec">Спецификация</a> — данные, правила, API</li>
+      <li><a href="#part-design">Экраны и тексты</a></li>
+    </ol>
+    <p style="margin:10px 0 0;font-size:13px;color:var(--muted)">
+      Тот же материал отдельными файлами Markdown и картинками схем — в приложенной папке
+      (<code>SPEC.md</code>, <code>LOGIC.md</code>, <code>DESIGN.md</code>, <code>diagrams/</code>).
+    </p>
+  </div>
+
+  <section class="part" id="part-logic">
+    <div class="plabel">Часть 1</div>
+    <h1>Как работает</h1>
+    __LOGIC__
+  </section>
+
+  <section class="part" id="part-spec">
+    <div class="plabel">Часть 2</div>
+    <h1>Спецификация</h1>
+    __SPEC__
+  </section>
+
+  <section class="part" id="part-design">
+    <div class="plabel">Часть 3</div>
+    <h1>Экраны и тексты</h1>
+    __DESIGN__
+  </section>
+</div>
+</body>
+</html>

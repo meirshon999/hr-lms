@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: peg-hr-lms
+    runtime: node
+    plan: free
+    rootDir: prototype
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.20.0
+      - key: TZ_LMS
+        value: Asia/Almaty
+      - key: TOKEN_SECRET
+        generateValue: true

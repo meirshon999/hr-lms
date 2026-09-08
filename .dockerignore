@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/*.db*
+.git
+.build-doc
+diagrams
+*.pdf
+*.html

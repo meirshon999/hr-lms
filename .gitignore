@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.build-doc/
+*.log
+
+# посторонние файлы iiko-финансов — к LMS не относятся, в репозиторий не идут
+*.py
+!tools/*.py
+*.xlsx
+*.csv
+*.xml
+*.json
+!prototype/**/*.json
+!diagrams/**/*.json
+ANALYSIS.txt
+MEASURE.txt

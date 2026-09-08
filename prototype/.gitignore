@@ -1,0 +1,7 @@
+node_modules/
+dist/
+server/lms.db
+server/lms.db-shm
+server/lms.db-wal
+*.log
+.DS_Store

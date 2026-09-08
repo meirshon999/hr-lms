@@ -1,0 +1,44 @@
+erDiagram
+    USER ||--o| EMPLOYEE : "role = employee"
+    POSITION ||--o{ EMPLOYEE : "должность"
+    EMPLOYEE ||--o{ PRE_ONBOARDING_VIEW : "просмотры материалов"
+    EMPLOYEE ||--o{ LESSON_PROGRESS : "по каждому уроку"
+    EMPLOYEE ||--o{ TEST_ATTEMPT : "все попытки"
+    EMPLOYEE ||--o{ AUDIT_LOG : "действия HR"
+    USER {
+      uuid id
+      string login
+      enum role "employee hr admin manager"
+      bool is_active
+    }
+    EMPLOYEE {
+      uuid id
+      string full_name
+      string phone "уникальный, не меняется"
+      date start_date
+      enum stage "intern onboarding completed archived"
+      bool internship_passed
+      bool pre_onboarding_done
+      date onboarding_due_date
+      bool overdue
+      json snapshot_json "замороженная траектория"
+      json pre_snapshot_json "замороженный пре-онбординг"
+    }
+    LESSON_PROGRESS {
+      uuid id
+      enum status "locked available passed"
+      bool material_done
+      int video_pct "просмотр видео, проверяет сервер"
+    }
+    TEST_ATTEMPT {
+      uuid id
+      int attempt_no
+      int score_pct
+      bool passed
+    }
+    AUDIT_LOG {
+      uuid id
+      string actor_login
+      string action
+      string detail
+    }

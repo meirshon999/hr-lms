@@ -1,0 +1,37 @@
+erDiagram
+    POSITION ||--|| TRAJECTORY : "1 к 1"
+    TRAJECTORY ||--o{ PRE_ONBOARDING_ITEM : "материалы о компании"
+    TRAJECTORY ||--o{ BLOCK : "по порядку"
+    BLOCK ||--o{ LESSON : "только regular-блоки"
+    LESSON ||--|| MATERIAL : "1 к 1"
+    LESSON ||--|| TEST : "1 к 1"
+    BLOCK ||--o| TEST : "если kind = attestation"
+    TEST ||--o{ QUESTION : "вопросы, один верный вариант"
+    POSITION {
+      uuid id
+      string name
+    }
+    TRAJECTORY {
+      uuid id
+      enum status "draft active"
+    }
+    BLOCK {
+      uuid id
+      int order
+      enum kind "regular attestation"
+    }
+    LESSON {
+      uuid id
+      int order
+      string title
+    }
+    TEST {
+      uuid id
+      int pass_mark_pct
+    }
+    QUESTION {
+      uuid id
+      string text
+      json options
+      int correct_option_index
+    }

@@ -1,0 +1,5 @@
+stateDiagram-v2
+    [*] --> locked : создан при открытии онбординга
+    locked --> available : предыдущий урок passed, либо это первый урок
+    available --> passed : материал засчитан И тест сдан
+    passed --> passed : перепрохождение теста, остаётся passed

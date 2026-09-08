@@ -1,0 +1,723 @@
+openapi: 3.1.0
+info:
+  title: PEG HR LMS v1 API
+  version: "1.0.0"
+  description: >
+    HTTP-контракт системы онбординга новых сотрудников (см. SPEC.md).
+    Один сервис. Все пути под /api/v1. Реализовано в prototype/.
+    Ошибка любого запроса: { error: { code, message, details? }, request_id }.
+servers:
+  - url: /api/v1
+
+tags:
+  - name: auth
+  - name: me
+    description: экраны сотрудника (роль employee)
+  - name: employees
+    description: работа HR с сотрудниками (роли hr, admin)
+  - name: catalog
+    description: конструктор контента (роли hr, admin)
+  - name: analytics
+    description: сводка для HR
+  - name: dev
+    description: ТОЛЬКО прототип — демо-часы и сброс; в проде модуля нет
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    Err:
+      description: Ошибка
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error, request_id]
+      properties:
+        request_id: { type: string }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, description: "snake_case машинный код" }
+            message: { type: string }
+            details: {}
+    Stage:
+      type: string
+      enum: [intern, onboarding, completed, archived]
+    ContentType:
+      type: string
+      enum: [video, pdf, text]
+    LessonStatus:
+      type: string
+      enum: [locked, available, passed]
+    Answer:
+      type: object
+      required: [question_id, option_index]
+      properties:
+        question_id: { type: string, format: uuid }
+        option_index: { type: integer }
+    TestResult:
+      type: object
+      properties:
+        score_pct: { type: integer }
+        passed: { type: boolean }
+        pass_mark_pct: { type: integer }
+        total: { type: integer }
+        correct: { type: integer }
+        attempt_no: { type: integer }
+    EmployeeRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+        position: { type: string }
+        position_id: { type: string, format: uuid }
+        phone: { type: string }
+        start_date: { type: string, format: date }
+        stage: { $ref: '#/components/schemas/Stage' }
+        onboarding_due_date: { type: [string, "null"], format: date }
+        overdue: { type: boolean }
+        progress:
+          type: object
+          properties:
+            passed: { type: integer }
+            total: { type: integer }
+    QuestionEmployee:
+      description: вопрос без верного ответа (для сотрудника)
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+        options: { type: array, items: { type: string } }
+    QuestionAuthor:
+      allOf:
+        - $ref: '#/components/schemas/QuestionEmployee'
+        - type: object
+          properties:
+            correct_index: { type: integer }
+
+security:
+  - bearer: []
+
+paths:
+  # ---------------- auth ----------------
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: Вход по логину и паролю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password]
+              properties:
+                login: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  role: { type: string, enum: [employee, hr, admin] }
+        "401": { $ref: '#/components/responses/Err' }
+  /auth/logout:
+    post: { tags: [auth], summary: Выход, responses: { "200": { description: ok } } }
+  /me:
+    get:
+      tags: [auth]
+      summary: Текущий пользователь и связанный сотрудник
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      login: { type: string }
+                      role: { type: string }
+                  employee:
+                    type: [object, "null"]
+                    properties:
+                      id: { type: string }
+                      full_name: { type: string }
+                      stage: { $ref: '#/components/schemas/Stage' }
+                      position_id: { type: string }
+  /demo/accounts:
+    get:
+      tags: [auth]
+      security: []
+      summary: "Список демо-аккаунтов (ТОЛЬКО прототип)"
+      responses:
+        "200": { description: "массив объектов login/password/role/name/stage" }
+
+  # ---------------- me (employee) ----------------
+  /me/pre-onboarding:
+    get:
+      tags: [me]
+      summary: Материалы пре-онбординга и отметки просмотра
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  done: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        content_type: { $ref: '#/components/schemas/ContentType' }
+                        file_url: { type: [string, "null"] }
+                        text_body: { type: [string, "null"] }
+                        viewed: { type: boolean }
+  /me/pre-onboarding/{itemId}/view:
+    post:
+      tags: [me]
+      summary: Отметить материал просмотренным
+      parameters: [{ name: itemId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  onboarding_opened: { type: boolean }
+  /me/trajectory:
+    get:
+      tags: [me]
+      summary: Траектория сотрудника с прогрессом
+      description: 409, если stage = intern (онбординг не открыт).
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stage: { $ref: '#/components/schemas/Stage' }
+                  onboarding_due_date: { type: [string, "null"] }
+                  overdue: { type: boolean }
+                  progress: { type: object, properties: { passed: { type: integer }, total: { type: integer } } }
+                  trajectory:
+                    type: [object, "null"]
+                    properties:
+                      blocks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            title: { type: string }
+                            lessons:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id: { type: string }
+                                  title: { type: string }
+                                  status: { $ref: '#/components/schemas/LessonStatus' }
+                                  material_done: { type: boolean }
+                                  material_type: { type: [string, "null"] }
+                      attestation:
+                        type: object
+                        properties:
+                          available: { type: boolean }
+                          passed: { type: boolean }
+                          question_count: { type: integer }
+                          pass_mark_pct: { type: integer }
+        "409": { $ref: '#/components/responses/Err' }
+  /me/lessons/{lessonId}:
+    get:
+      tags: [me]
+      summary: Детали урока (материал + тест без верных ответов)
+      description: 403, если урок locked.
+      parameters: [{ name: lessonId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  title: { type: string }
+                  status: { $ref: '#/components/schemas/LessonStatus' }
+                  material_done: { type: boolean }
+                  material:
+                    type: [object, "null"]
+                    properties:
+                      content_type: { $ref: '#/components/schemas/ContentType' }
+                      file_url: { type: [string, "null"] }
+                      text_body: { type: [string, "null"] }
+                      min_watch_pct: { type: [integer, "null"] }
+                  test:
+                    type: [object, "null"]
+                    properties:
+                      id: { type: string }
+                      pass_mark_pct: { type: integer }
+                      questions: { type: array, items: { $ref: '#/components/schemas/QuestionEmployee' } }
+                      last_attempt:
+                        type: [object, "null"]
+                        properties:
+                          attempt_no: { type: integer }
+                          score_pct: { type: integer }
+                          passed: { type: boolean }
+        "403": { $ref: '#/components/responses/Err' }
+  /me/lessons/{lessonId}/video-progress:
+    post:
+      tags: [me]
+      summary: Отчёт о просмотре видео (прогресс копится на сервере)
+      parameters: [{ name: lessonId, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pct], properties: { pct: { type: integer, minimum: 0, maximum: 100 } } } } } }
+      responses:
+        "200": { description: "{ video_pct }" }
+        "403": { $ref: '#/components/responses/Err' }
+  /me/lessons/{lessonId}/material-done:
+    post:
+      tags: [me]
+      summary: Отметить материал урока пройденным (идемпотентно)
+      description: >
+        Для видео сервер проверяет накопленный video_pct >= min_watch_pct,
+        иначе 422 video_not_watched.
+      parameters: [{ name: lessonId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok: true }" }
+        "403": { $ref: '#/components/responses/Err' }
+        "422": { $ref: '#/components/responses/Err', description: video_not_watched }
+  /me/lessons/{lessonId}/test:
+    post:
+      tags: [me]
+      summary: Сдать тест урока
+      parameters: [{ name: lessonId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers: { type: array, items: { $ref: '#/components/schemas/Answer' } }
+      responses:
+        "200":
+          content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } }
+  /me/attestation:
+    get:
+      tags: [me]
+      summary: Финальный тест аттестации
+      description: 403, если не все уроки пройдены.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_id: { type: string }
+                  pass_mark_pct: { type: integer }
+                  questions: { type: array, items: { $ref: '#/components/schemas/QuestionEmployee' } }
+                  last_attempt: { type: [object, "null"] }
+                  completed: { type: boolean }
+        "403": { $ref: '#/components/responses/Err' }
+    post:
+      tags: [me]
+      summary: Сдать аттестацию (при passed → stage = completed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers: { type: array, items: { $ref: '#/components/schemas/Answer' } }
+      responses:
+        "200": { content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
+        "422": { $ref: '#/components/responses/Err' }
+
+  # ---------------- employees (HR) ----------------
+  /employees:
+    get:
+      tags: [employees]
+      summary: Список сотрудников
+      parameters:
+        - { name: stage, in: query, schema: { $ref: '#/components/schemas/Stage' } }
+        - { name: position_id, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: include_archived, in: query, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/EmployeeRow' } }
+    post:
+      tags: [employees]
+      summary: Завести сотрудника (создаёт User + Employee, stage = intern)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, position_id, phone, start_date, login, password]
+              properties:
+                full_name: { type: string, maxLength: 160 }
+                position_id: { type: string }
+                phone: { type: string }
+                start_date: { type: string, format: date }
+                login: { type: string }
+                password: { type: string }
+      responses:
+        "201":
+          description: "{ employee, warnings: string[] } — warnings может содержать no_active_trajectory"
+        "422": { $ref: '#/components/responses/Err', description: "phone_exists / login_exists / start_date_too_old" }
+  /employees/{id}:
+    get:
+      tags: [employees]
+      summary: Карточка сотрудника (этап, прогресс по блокам/урокам, логин)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: подробная карточка }
+        "404": { $ref: '#/components/responses/Err' }
+    patch:
+      tags: [employees]
+      summary: Изменить ФИО / телефон
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name: { type: string }
+                phone: { type: string }
+      responses:
+        "200": { description: "{ ok: true }" }
+        "422": { $ref: '#/components/responses/Err' }
+  /employees/{id}/internship-passed:
+    post:
+      tags: [employees]
+      summary: Отметить стажировку пройденной (пробует открыть онбординг)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok, onboarding_opened, reason }" }
+        "409": { $ref: '#/components/responses/Err', description: "не intern" }
+  /employees/{id}/internship-failed:
+    post:
+      tags: [employees]
+      summary: Стажировку не прошёл — удаляет сотрудника и весь прогресс
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok, deleted: true }" }
+        "409": { $ref: '#/components/responses/Err' }
+  /employees/{id}/archive:
+    post:
+      tags: [employees]
+      summary: В архив (user.is_active = false, данные сохраняются)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ ok: true }" } }
+  /employees/{id}/reset-password:
+    post:
+      tags: [employees]
+      summary: Сбросить пароль — возвращает новый
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ password: string }" } }
+  /employees/{id}/audit:
+    get:
+      tags: [employees]
+      summary: Журнал действий по сотруднику
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ items: [{ ts, actor_login, action, detail }] }" } }
+  /employees/{id}/invite:
+    post:
+      tags: [employees]
+      summary: Ссылка-приглашение
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ invite_url, login }" } }
+
+  # ---------------- catalog / конструктор (HR) ----------------
+  /positions:
+    get: { tags: [catalog], summary: Список должностей, responses: { "200": { description: "{ items: [{id,name,trajectory_status,trajectory_id}] }" } } }
+    post:
+      tags: [catalog]
+      summary: Создать должность (+ пустая траектория draft + блок аттестации)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses: { "201": { description: position }}
+  /positions/{id}:
+    patch:
+      tags: [catalog]
+      summary: Переименовать должность
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
+      responses: { "200": { description: ok } }
+    delete:
+      tags: [catalog]
+      summary: Удалить должность (только если нет сотрудников)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: ok }
+        "409": { $ref: '#/components/responses/Err', description: has_employees }
+  /trajectories/{positionId}:
+    get:
+      tags: [catalog]
+      summary: Полное дерево траектории (с верными ответами) + problems[]
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: >
+            { id, status, pre_onboarding[], blocks[] (regular: lessons[] с material и test;
+            attestation: test), problems: string[] }
+  /trajectories/{positionId}/publish:
+    post:
+      tags: [catalog]
+      summary: draft → active (проверка полноты C-2)
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ ok, status: active }" }
+        "422": { $ref: '#/components/responses/Err', description: "trajectory_incomplete, details = список проблем" }
+  /trajectories/{positionId}/unpublish:
+    post:
+      tags: [catalog]
+      summary: active → draft
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /trajectories/{positionId}/pre-onboarding:
+    post:
+      tags: [catalog]
+      summary: Добавить материал пре-онбординга
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content_type]
+              properties:
+                title: { type: string }
+                content_type: { $ref: '#/components/schemas/ContentType' }
+                file_url: { type: [string, "null"] }
+                text_body: { type: [string, "null"] }
+      responses: { "201": { description: "{ id }" } }
+  /trajectories/{positionId}/pre-onboarding/order:
+    put:
+      tags: [catalog]
+      summary: Переупорядочить материалы пре-онбординга
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: string } } } } } } }
+      responses: { "200": { description: ok } }
+  /pre-onboarding/{id}:
+    patch:
+      tags: [catalog]
+      summary: Изменить материал пре-онбординга
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { title: { type: string }, content_type: { $ref: '#/components/schemas/ContentType' }, file_url: { type: string }, text_body: { type: string } } } } } }
+      responses: { "200": { description: ok } }
+    delete:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /trajectories/{positionId}/blocks:
+    post:
+      tags: [catalog]
+      summary: Добавить блок (regular, встаёт перед аттестацией)
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [title], properties: { title: { type: string } } } } } }
+      responses: { "201": { description: "{ id }" } }
+  /trajectories/{positionId}/blocks/order:
+    put:
+      tags: [catalog]
+      summary: Переупорядочить regular-блоки (аттестация всегда последняя)
+      parameters: [{ name: positionId, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: string } } } } } } }
+      responses: { "200": { description: ok } }
+  /blocks/{id}:
+    patch:
+      tags: [catalog]
+      summary: Переименовать блок (только regular)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { title: { type: string } } } } } }
+      responses: { "200": { description: ok } }
+    delete:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: ok }
+        "409": { $ref: '#/components/responses/Err', description: "блок аттестации удалить нельзя" }
+  /blocks/{id}/lessons:
+    post:
+      tags: [catalog]
+      summary: Добавить урок в блок
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [title], properties: { title: { type: string } } } } } }
+      responses:
+        "201": { description: "{ id }" }
+        "409": { $ref: '#/components/responses/Err', description: "в блок аттестации уроки не добавляются" }
+  /blocks/{id}/lessons/order:
+    put:
+      tags: [catalog]
+      summary: Переупорядочить уроки блока
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: string } } } } } } }
+      responses: { "200": { description: ok } }
+  /blocks/{id}/test:
+    put:
+      tags: [catalog]
+      summary: Создать/обновить тест блока аттестации
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pass_mark_pct], properties: { pass_mark_pct: { type: integer, minimum: 1, maximum: 100 } } } } } }
+      responses: { "200": { description: "{ test_id }" } }
+  /lessons/{id}:
+    patch:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { title: { type: string } } } } } }
+      responses: { "200": { description: ok } }
+    delete:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /lessons/{id}/material:
+    put:
+      tags: [catalog]
+      summary: Создать/обновить материал урока
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type]
+              properties:
+                content_type: { $ref: '#/components/schemas/ContentType' }
+                file_url: { type: [string, "null"] }
+                text_body: { type: [string, "null"] }
+                min_watch_pct: { type: [integer, "null"], minimum: 0, maximum: 100 }
+      responses: { "200": { description: ok } }
+  /lessons/{id}/test:
+    put:
+      tags: [catalog]
+      summary: Создать/обновить тест урока
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pass_mark_pct], properties: { pass_mark_pct: { type: integer } } } } } }
+      responses: { "200": { description: "{ test_id }" } }
+  /tests/{id}/questions:
+    post:
+      tags: [catalog]
+      summary: Добавить вопрос
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, options, correct_index]
+              properties:
+                text: { type: string }
+                options: { type: array, minItems: 2, maxItems: 6, items: { type: string } }
+                correct_index: { type: integer }
+      responses: { "201": { description: "{ id }" } }
+  /questions/{id}:
+    patch:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                options: { type: array, items: { type: string } }
+                correct_index: { type: integer }
+      responses: { "200": { description: ok } }
+    delete:
+      tags: [catalog]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+
+  # ---------------- analytics ----------------
+  /audit:
+    get:
+      tags: [analytics]
+      summary: Общий журнал действий HR/админа
+      parameters: [{ name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }]
+      responses: { "200": { description: "{ items: [{ ts, actor_login, action, employee_id, detail }] }" } }
+  /analytics:
+    get:
+      tags: [analytics]
+      summary: Сводка по онбордингу
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  by_stage: { type: object, additionalProperties: { type: integer } }
+                  total: { type: integer }
+                  overdue: { type: integer }
+                  avg_onboarding_days: { type: [number, "null"] }
+                  funnel:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        position: { type: string }
+                        cohort: { type: integer }
+                        attested: { type: integer }
+                        blocks:
+                          type: array
+                          items: { type: object, properties: { title: { type: string }, passed: { type: integer } } }
+
+  # ---------------- dev (только прототип) ----------------
+  /dev/clock:
+    get:
+      tags: [dev]
+      security: []
+      summary: "Демо-дата"
+      responses: { "200": { description: "{ today, overridden }" } }
+    post:
+      tags: [dev]
+      summary: Установить демо-дату
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [date], properties: { date: { type: string, format: date } } } } } }
+      responses: { "200": { description: "{ today, overridden }" } }
+  /dev/clock/advance:
+    post:
+      tags: [dev]
+      summary: Сдвинуть демо-дату на N дней
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [days], properties: { days: { type: integer } } } } } }
+      responses: { "200": { description: ok } }
+  /dev/clock/reset:
+    post: { tags: [dev], summary: "Вернуть реальную дату", responses: { "200": { description: ok } } }
+  /dev/reset:
+    post: { tags: [dev], summary: "Полный сброс демо-данных", responses: { "200": { description: ok } } }
+  /dev/events:
+    get: { tags: [dev], summary: "Лог последних доменных событий (панель «События»)", responses: { "200": { description: "{ events: [{ ts, type, detail }] }" } } }

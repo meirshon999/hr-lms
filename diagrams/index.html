@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PEG HR LMS — схемы</title>
+<style>
+  :root { --bg:#FAF6F2; --card:#fff; --ink:#2A1A1E; --muted:#9B8E8E; --accent:#4A0F1E; --gold:#C6A15B; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.5 "Segoe UI", Arial, sans-serif; }
+  header { background:var(--accent); color:#fff; padding:28px 32px; }
+  header h1 { margin:0; font-size:24px; }
+  header p { margin:6px 0 0; color:var(--gold); }
+  nav { padding:16px 32px; background:var(--card); border-bottom:1px solid #eadfd7; }
+  nav a { display:inline-block; margin:4px 12px 4px 0; color:var(--accent); text-decoration:none; font-size:14px; }
+  nav a:hover { text-decoration:underline; }
+  main { padding:24px 32px 80px; max-width:1200px; margin:0 auto; }
+  section { background:var(--card); border:1px solid #eadfd7; border-radius:10px;
+            margin:22px 0; padding:20px 24px; }
+  section h2 { margin:0 0 4px; font-size:19px; color:var(--accent); }
+  section .desc { margin:0 0 16px; color:var(--muted); font-size:14px; }
+  .frame { overflow:auto; border:1px solid #f0e8e0; border-radius:8px; background:#fff; padding:12px; }
+  .frame img { display:block; max-width:100%; height:auto; margin:0 auto; }
+  .files { margin-top:10px; font-size:13px; color:var(--muted); }
+  .files a { color:var(--accent); }
+  footer { text-align:center; color:var(--muted); font-size:13px; padding:24px; }
+  @media print {
+    nav { display:none; }
+    section { break-inside:avoid; border:none; }
+    header { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PEG HR LMS v1 — схемы работы</h1>
+  <p>10 диаграмм из LOGIC.md · PNG и SVG рядом в папках · для печати нажмите Ctrl+P</p>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<footer>Исходники схем — <code>diagrams/src/*.mmd</code>. Правите текст в <code>LOGIC.md</code> → перегенерируете картинки (см. README.md).</footer>
+<script>
+const items = [
+  ["01-system-map", "1. Карта системы", "Один сервис lms с модулями (вход, обучение, управление, конструктор, джобы). Кто входит и куда."],
+  ["02-er-content", "2. Данные: контент траектории", "Должность → траектория → материалы пре-онбординга + блоки → уроки (материал + тест) → вопросы. Последний блок — аттестация."],
+  ["03-er-people-progress", "3. Данные: люди и прогресс", "User (логин, роль) → Employee (этап, флаги гейтов, дедлайн). Прогресс: просмотры пре-онбординга, статус уроков, все попытки тестов."],
+  ["04-state-employee", "4. Состояния сотрудника", "intern → onboarding → completed → archived. Проваленная стажировка = полное удаление."],
+  ["05-state-lesson", "5. Состояния урока", "locked → available → passed. Перепрохождение сданного теста оставляет урок passed."],
+  ["06-process-hire", "6. Найм → стажёр", "HR заводит сотрудника, проверка телефона, разворот целей пре-онбординга, ожидание активной траектории."],
+  ["07-process-onboarding-gates", "7. Два гейта → открытие онбординга", "Гейт 1: весь пре-онбординг просмотрен. Гейт 2: прошли дни стажировки ИЛИ кнопка HR. Оба + активная траектория → онбординг открыт, дедлайн +14 дней."],
+  ["08-process-lesson", "8. Прохождение урока", "Материал засчитан + тест сдан → урок passed. Тесты без лимита попыток, пересдача сразу."],
+  ["09-process-unlock-attestation", "9. Разблокировка и аттестация", "После каждого passed открывается следующий урок/блок. Все regular-блоки пройдены → доступна аттестация → сдал → completed."],
+  ["10-process-content-builder", "10. Конструктор контента", "Должность → пустая траектория (draft) → блоки, уроки, тесты, аттестация → проверка полноты → Опубликовать. Правки видны всем сразу."],
+];
+const nav = document.getElementById('nav');
+const main = document.getElementById('main');
+for (const [id, title, desc] of items) {
+  const a = document.createElement('a');
+  a.href = '#' + id; a.textContent = title;
+  nav.appendChild(a);
+  const s = document.createElement('section');
+  s.id = id;
+  s.innerHTML =
+    '<h2>' + title + '</h2>' +
+    '<p class="desc">' + desc + '</p>' +
+    '<div class="frame"><img src="svg/' + id + '.svg" alt="' + title + '"></div>' +
+    '<p class="files">Файлы: <a href="png/' + id + '.png">png/' + id + '.png</a> · ' +
+    '<a href="svg/' + id + '.svg">svg/' + id + '.svg</a> · ' +
+    '<a href="src/' + id + '.mmd">src/' + id + '.mmd</a></p>';
+  main.appendChild(s);
+}
+</script>
+</body>
+</html>
