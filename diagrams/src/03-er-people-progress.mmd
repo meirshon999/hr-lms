@@ -1,6 +1,7 @@
 erDiagram
     USER ||--o| EMPLOYEE : "role = employee"
     POSITION ||--o{ EMPLOYEE : "должность"
+    LOCATION ||--o{ EMPLOYEE : "точка работы"
     EMPLOYEE ||--o{ PRE_ONBOARDING_VIEW : "просмотры материалов"
     EMPLOYEE ||--o{ LESSON_PROGRESS : "по каждому уроку"
     EMPLOYEE ||--o{ TEST_ATTEMPT : "все попытки"
@@ -10,18 +11,20 @@ erDiagram
       string login
       enum role "employee hr admin manager"
       bool is_active
+      bool must_change_password "выдан временный пароль"
     }
     EMPLOYEE {
       uuid id
+      string iin "12 цифр, уникален по всей сети"
       string full_name
-      string phone "уникальный, не меняется"
+      string phone "НЕ уникален — телефон меняется"
       date start_date
       enum stage "intern onboarding completed archived"
       bool internship_passed
       bool pre_onboarding_done
       date onboarding_due_date
       bool overdue
-      json snapshot_json "замороженная траектория"
+      json snapshot_json "замороженная траектория под точку"
       json pre_snapshot_json "замороженный пре-онбординг"
     }
     LESSON_PROGRESS {

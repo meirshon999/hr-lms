@@ -3,13 +3,21 @@ erDiagram
     TRAJECTORY ||--o{ PRE_ONBOARDING_ITEM : "материалы о компании"
     TRAJECTORY ||--o{ BLOCK : "по порядку"
     BLOCK ||--o{ LESSON : "только regular-блоки"
-    LESSON ||--|| MATERIAL : "1 к 1"
-    LESSON ||--|| TEST : "1 к 1"
+    LESSON ||--o{ MATERIAL : "общий или свой на каждой точке"
+    LESSON ||--o{ TEST : "общий или свой на каждой точке"
+    LESSON ||--o{ LESSON_LOCATION : "если урок есть не везде"
+    LOCATION ||--o{ LESSON_LOCATION : ""
     BLOCK ||--o| TEST : "если kind = attestation"
     TEST ||--o{ QUESTION : "вопросы, один верный вариант"
     POSITION {
       uuid id
       string name
+    }
+    LOCATION {
+      uuid id
+      string name
+      string city
+      bool is_active
     }
     TRAJECTORY {
       uuid id
@@ -24,9 +32,16 @@ erDiagram
       uuid id
       int order
       string title
+      bool everywhere "есть на всех точках"
+      bool content_per_location "содержимое своё у каждой"
+    }
+    MATERIAL {
+      uuid id
+      string location_id "* = общий на сеть"
     }
     TEST {
       uuid id
+      string location_id "* = общий на сеть"
       int pass_mark_pct
     }
     QUESTION {
