@@ -34,10 +34,18 @@ export function Login() {
   const employees = showAll ? allEmployees : allEmployees.filter((a) => NAMED.includes(a.login));
   const staff = accounts?.filter((a) => a.role !== 'employee') ?? [];
 
+  // Панель демо-аккаунтов существует только на тестовом стенде. В бою её нет,
+  // и тогда экран должен быть узким и по центру, а не половиной пустой сетки.
+  const withDemo = !!accounts?.length;
+
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '30px 16px 90px',
-      background: 'radial-gradient(120% 50% at 50% 0%, #efe0cf 0%, var(--bg) 55%)' }}>
-      <div style={{ width: '100%', maxWidth: 760, display: 'grid', gap: 20,
+    <div style={{
+      minHeight: '100vh', display: 'grid', placeItems: 'center',
+      // снизу оставляем место только под демо-панель, которой в бою нет
+      padding: withDemo ? '30px 16px 90px' : '30px 16px',
+      background: 'radial-gradient(120% 50% at 50% 0%, #efe0cf 0%, var(--bg) 55%)',
+    }}>
+      <div style={{ width: '100%', maxWidth: withDemo ? 760 : 420, display: 'grid', gap: 20,
         gridTemplateColumns: 'minmax(0,1fr)' }}>
         <div style={{ textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 6 }}>
           <Logo size={44} wordmark />
@@ -45,7 +53,7 @@ export function Login() {
         </div>
 
         <div style={{ display: 'grid', gap: 18, gridTemplateColumns: '1fr', alignItems: 'start' }}
-          className="login-grid">
+          className={withDemo ? 'login-grid' : undefined}>
           <form className="card" style={{ padding: 24 }} onSubmit={submit}>
             <h3 style={{ marginBottom: 14 }}>Вход</h3>
             <label className="field"><span>Логин</span>

@@ -35,7 +35,10 @@ export function ChangePassword() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '30px 16px' }}>
+    <div style={{
+      minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '30px 16px',
+      background: 'radial-gradient(120% 50% at 50% 0%, #efe0cf 0%, var(--bg) 55%)',
+    }}>
       <div style={{ width: '100%', maxWidth: 420, display: 'grid', gap: 18, justifyItems: 'center' }}>
         <Logo size={40} wordmark />
         <form className="card" style={{ padding: 24, width: '100%' }} onSubmit={submit}>
