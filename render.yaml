@@ -3,7 +3,7 @@ services:
     name: peg-hr-lms
     runtime: node
     plan: free
-    rootDir: prototype
+    rootDir: app
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health

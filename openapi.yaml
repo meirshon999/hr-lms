@@ -4,7 +4,7 @@ info:
   version: "1.0.0"
   description: >
     HTTP-контракт системы онбординга новых сотрудников (см. SPEC.md).
-    Один сервис. Все пути под /api/v1. Реализовано в prototype/.
+    Один сервис. Все пути под /api/v1. Реализовано в app/.
     Ошибка любого запроса: { error: { code, message, details? }, request_id }.
 servers:
   - url: /api/v1
@@ -74,9 +74,12 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        iin: { type: string, description: ключ человека по всей сети }
         full_name: { type: string }
         position: { type: string }
         position_id: { type: string, format: uuid }
+        location: { type: string }
+        location_id: { type: string, format: uuid }
         phone: { type: string }
         start_date: { type: string, format: date }
         stage: { $ref: '#/components/schemas/Stage' }
@@ -130,7 +133,29 @@ paths:
                 properties:
                   token: { type: string }
                   role: { type: string, enum: [employee, hr, admin] }
+                  must_change_password:
+                    type: boolean
+                    description: выдан временный пароль — до смены доступен только экран смены
         "401": { $ref: '#/components/responses/Err' }
+        "429": { $ref: '#/components/responses/Err', description: "too_many_attempts — 10 неудач с адреса за 15 минут" }
+  /auth/change-password:
+    post:
+      tags: [auth]
+      summary: Сменить пароль (обязательно после выдачи временного)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 6, maxLength: 72 }
+      responses:
+        "200": { description: ok }
+        "401": { $ref: '#/components/responses/Err', description: "bad_credentials — текущий пароль неверен" }
+        "422": { $ref: '#/components/responses/Err', description: "same_password" }
   /auth/logout:
     post: { tags: [auth], summary: Выход, responses: { "200": { description: ok } } }
   /me:
@@ -364,7 +389,8 @@ paths:
       parameters:
         - { name: stage, in: query, schema: { $ref: '#/components/schemas/Stage' } }
         - { name: position_id, in: query, schema: { type: string } }
-        - { name: search, in: query, schema: { type: string } }
+        - { name: location_id, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string }, description: ФИО, телефон или ИИН }
         - { name: include_archived, in: query, schema: { type: string } }
       responses:
         "200":
@@ -383,18 +409,22 @@ paths:
           application/json:
             schema:
               type: object
-              required: [full_name, position_id, phone, start_date, login, password]
+              required: [iin, full_name, position_id, location_id, phone, start_date, login, password]
               properties:
+                iin:
+                  type: string
+                  description: 12 цифр, проверяется контрольная сумма. Ключ человека по всей сети
                 full_name: { type: string, maxLength: 160 }
                 position_id: { type: string }
-                phone: { type: string }
+                location_id: { type: string }
+                phone: { type: string, description: не уникален — телефон меняется }
                 start_date: { type: string, format: date }
                 login: { type: string }
-                password: { type: string }
+                password: { type: string, minLength: 6, description: временный, сотрудник сменит при первом входе }
       responses:
         "201":
           description: "{ employee, warnings: string[] } — warnings может содержать no_active_trajectory"
-        "422": { $ref: '#/components/responses/Err', description: "phone_exists / login_exists / start_date_too_old" }
+        "422": { $ref: '#/components/responses/Err', description: "bad_iin / iin_exists / login_exists / start_date_too_old" }
   /employees/{id}:
     get:
       tags: [employees]
@@ -434,6 +464,36 @@ paths:
       responses:
         "200": { description: "{ ok, deleted: true }" }
         "409": { $ref: '#/components/responses/Err' }
+  /employees/{id}/transfer:
+    post:
+      tags: [employees]
+      summary: Перевести на другую точку (R-13)
+      description: >
+        Снимок пересобирается под новую точку. Сданные общие уроки остаются сданными,
+        уроки со своим содержимым на каждой точке открываются заново, отсутствующие
+        на новой точке исчезают. Дедлайн не сдвигается.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [location_id]
+              properties:
+                location_id: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kept: { type: integer, description: зачтено сданных уроков }
+                  redo: { type: integer, description: открыто заново — на новой точке они другие }
+                  added: { type: integer, description: добавлено уроков, которых не было }
+        "409": { $ref: '#/components/responses/Err', description: "same_location / no_location / archived" }
   /employees/{id}/archive:
     post:
       tags: [employees]
@@ -544,6 +604,63 @@ paths:
       responses: { "200": { description: "{ invite_url, login }" } }
 
   # ---------------- catalog / конструктор (HR) ----------------
+  /locations:
+    get:
+      tags: [catalog]
+      summary: Точки сети
+      parameters:
+        - { name: include_inactive, in: query, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        city: { type: string, nullable: true }
+                        is_active: { type: boolean }
+                        employees: { type: integer, description: действующих сотрудников на точке }
+    post:
+      tags: [catalog]
+      summary: Добавить точку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+                city: { type: string, nullable: true }
+      responses:
+        "201": { description: "{ id }" }
+        "422": { $ref: '#/components/responses/Err', description: name_exists }
+  /locations/{id}:
+    patch:
+      tags: [catalog]
+      summary: Изменить или закрыть точку
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                city: { type: string, nullable: true }
+                is_active: { type: boolean }
+      responses:
+        "200": { description: ok }
+        "409": { $ref: '#/components/responses/Err', description: "has_employees — сначала переведите людей (C-12)" }
   /positions:
     get: { tags: [catalog], summary: Список должностей, responses: { "200": { description: "{ items: [{id,name,trajectory_status,trajectory_id}] }" } } }
     post:

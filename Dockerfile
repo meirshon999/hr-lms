@@ -1,18 +1,18 @@
 # Один образ: собирает фронт и бэк, запускает один процесс на $PORT.
 # Контекст сборки — корень проекта (нужен openapi.yaml для /docs).
 FROM node:24-alpine AS build
-WORKDIR /app
-COPY prototype/package*.json ./prototype/
-COPY prototype/server/package*.json ./prototype/server/
-COPY prototype/web/package*.json ./prototype/web/
-RUN cd prototype && npm install
-COPY prototype ./prototype
+WORKDIR /srv
+COPY app/package*.json ./app/
+COPY app/server/package*.json ./app/server/
+COPY app/web/package*.json ./app/web/
+RUN cd app && npm install
+COPY app ./app
 COPY openapi.yaml ./openapi.yaml
-RUN cd prototype && npm run build
+RUN cd app && npm run build
 
 FROM node:24-alpine
-WORKDIR /app
+WORKDIR /srv
 ENV NODE_ENV=production TZ_LMS=Asia/Almaty PORT=3001
-COPY --from=build /app /app
+COPY --from=build /srv /srv
 EXPOSE 3001
-CMD ["node", "prototype/server/dist/index.js"]
+CMD ["node", "app/server/dist/index.js"]
