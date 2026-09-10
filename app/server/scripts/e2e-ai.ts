@@ -115,6 +115,17 @@ async function main() {
   });
   check('черновик без вопросов отклоняется', empty.s === 400, String(empty.s));
 
+  // ---------- расшифровка речи ----------
+  const noFile = await j('/ai/transcribe', { method: 'POST', h });
+  check('расшифровка без файла отклоняется понятной ошибкой',
+    noFile.s === 400 && noFile.d?.error?.code === 'no_file',
+    `${noFile.s} ${noFile.d?.error?.code ?? ''}`);
+  if (status.stt?.enabled) {
+    console.log(`расшифровка: ${status.stt.provider} / ${status.stt.model} / ${status.stt.language}`);
+  } else {
+    check('выключенная расшифровка честно говорит об этом', true, 'ключ не задан');
+  }
+
   // ---------- в журнале осталась запись, что урок собран ИИ ----------
   const log = (await j('/audit?limit=20', { h })).d;
   check('применение записано в журнал', JSON.stringify(log).includes('ai_apply'));

@@ -58,6 +58,27 @@ export interface Uploaded {
  * с boundary; если задать вручную, сервер не разберёт тело.
  * onProgress работает через XHR: у fetch прогресса отправки нет.
  */
+/**
+ * Надиктованное — в текст. Запись никуда не сохраняется: она живёт ровно столько,
+ * сколько идёт расшифровка.
+ */
+export async function transcribeAudio(blob: Blob, filename = 'speech.webm'): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', blob, filename);
+  const t = token();
+  const res = await fetch(BASE + '/ai/transcribe', {
+    method: 'POST',
+    headers: t ? { authorization: `Bearer ${t}` } : {},
+    body: fd,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = (data as any)?.error;
+    throw new ApiError(res.status, e?.code ?? 'stt_failed', e?.message ?? 'Не удалось расшифровать');
+  }
+  return (data as any).text as string;
+}
+
 export function upload(file: File, onProgress?: (pct: number) => void): Promise<Uploaded> {
   return new Promise((resolve, reject) => {
     const fd = new FormData();

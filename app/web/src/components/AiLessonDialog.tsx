@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { del, get, post, ApiError } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { del, get, post, transcribeAudio, ApiError } from '../api';
 import { useToast } from '../lib';
 
 interface Question { text: string; options: string[]; correct_index: number }
@@ -16,10 +16,12 @@ interface Draft { title: string; material: string; questions: Question[] }
  * уверенный и неверный тест, и заметит это только человек, знающий смену.
  */
 export function AiLessonDialog({
-  lessonId, lessonTitle, locationId, locationName, onClose, onApplied,
+  lessonId, lessonTitle, locationId, locationName, canDictate, onClose, onApplied,
 }: {
   lessonId: string;
   lessonTitle: string;
+  /** Расшифровка речи настроена — можно предлагать микрофон. */
+  canDictate?: boolean;
   /** Пусто — урок общий на сеть. Иначе правим вариант этой точки. */
   locationId?: string;
   locationName?: string;
@@ -30,8 +32,11 @@ export function AiLessonDialog({
   const [source, setSource] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [meta, setMeta] = useState<{ provider: string; model: string } | null>(null);
-  const [busy, setBusy] = useState<'build' | 'apply' | null>(null);
+  const [busy, setBusy] = useState<'build' | 'apply' | 'stt' | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [recSeconds, setRecSeconds] = useState<number | null>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const q = locationId ? `?location=${encodeURIComponent(locationId)}` : '';
 
@@ -48,6 +53,63 @@ export function AiLessonDialog({
     }).catch(() => { /* черновика нет — обычное дело */ });
     return () => { live = false; };
   }, [lessonId, q]);
+
+  /**
+   * Диктовка. Половина уроков на точках — «своё на каждой», и писать их некому:
+   * управляющий готов рассказать про свою кухню, но не сесть и набрать текст.
+   * Запись уходит на расшифровку и нигде не сохраняется.
+   */
+  async function startRecording() {
+    setErr(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setErr('Этот браузер не умеет записывать звук — вставьте текст руками');
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setErr('Браузер не дал доступ к микрофону. Разрешите его в настройках сайта');
+      return;
+    }
+
+    const type = ['audio/webm', 'audio/mp4', 'audio/ogg']
+      .find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
+    const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks: BlobPart[] = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach((tr) => tr.stop());
+      if (ticker.current) clearInterval(ticker.current);
+      setRecSeconds(null);
+      recorder.current = null;
+
+      setBusy('stt');
+      try {
+        const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : 'webm';
+        const text = await transcribeAudio(new Blob(chunks, { type: type || 'audio/webm' }), `speech.${ext}`);
+        // Дописываем, а не затираем: можно наговорить в несколько заходов.
+        setSource((s) => (s.trim() ? `${s.trim()}\n\n${text}` : text));
+      } catch (e) {
+        setErr(e instanceof ApiError ? e.message : 'Не удалось расшифровать запись');
+      } finally {
+        setBusy(null);
+      }
+    };
+
+    recorder.current = rec;
+    rec.start();
+    setRecSeconds(0);
+    ticker.current = setInterval(() => setRecSeconds((s) => (s ?? 0) + 1), 1000);
+  }
+
+  const stopRecording = () => recorder.current?.stop();
+
+  // Уходя, глушим микрофон: иначе он останется включённым после закрытия окна.
+  useEffect(() => () => {
+    recorder.current?.stream?.getTracks().forEach((tr) => tr.stop());
+    if (ticker.current) clearInterval(ticker.current);
+  }, []);
 
   async function build() {
     setBusy('build'); setErr(null);
@@ -115,12 +177,29 @@ export function AiLessonDialog({
                 style={{ width: '100%', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.5 }}
               />
             </label>
-            <div className="row-between">
+            <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="muted" style={{ fontSize: 12 }}>{source.trim().length} символов</span>
-              <button className="btn sm" disabled={busy !== null || source.trim().length < 200} onClick={build}>
-                {busy === 'build' ? 'Собираем…' : draft ? 'Собрать заново' : 'Собрать'}
-              </button>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {canDictate && recSeconds === null && (
+                  <button className="btn ghost sm" disabled={busy !== null} onClick={startRecording}>
+                    {busy === 'stt' ? 'Расшифровываем…' : '🎤 Надиктовать'}
+                  </button>
+                )}
+                {recSeconds !== null && (
+                  <button className="btn danger sm" onClick={stopRecording}>
+                    ■ Записываю {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
+                  </button>
+                )}
+                <button className="btn sm" disabled={busy !== null || source.trim().length < 200} onClick={build}>
+                  {busy === 'build' ? 'Собираем…' : draft ? 'Собрать заново' : 'Собрать'}
+                </button>
+              </span>
             </div>
+            {canDictate && recSeconds === null && busy !== 'stt' && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Можно не печатать: расскажите вслух, текст добавится сюда же.
+              </p>
+            )}
             {source.trim().length > 0 && source.trim().length < 200 && (
               <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                 Нужно хотя бы 200 символов — из пары строк урока не выйдет.

@@ -6,6 +6,8 @@ import { audit } from '../audit.ts';
 import { stamp } from '../clock.ts';
 import { contentSlot } from '../content.ts';
 import { AiError, aiInfo, aiUnavailableReason } from '../ai/provider.ts';
+import { sttInfo, transcribe } from '../ai/transcribe.ts';
+import { MAX_AUDIO_MB } from '../config.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 
 const actor = (req: any) => req?.user?.login ?? 'system';
@@ -27,7 +29,47 @@ export default async function aiRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authRequired('hr', 'admin'));
 
   /** Интерфейс спрашивает это, чтобы не показывать кнопки там, где их нечем обслужить. */
-  app.get('/ai/status', async () => aiInfo());
+  app.get('/ai/status', async () => ({ ...aiInfo(), stt: sttInfo() }));
+
+  /**
+   * Надиктованное — в текст. Ничего не сохраняем: запись нужна ровно на то время,
+   * пока идёт расшифровка. Голос сотрудника хранить незачем.
+   */
+  app.post('/ai/transcribe', async (req: any, reply) => {
+    // Без перехвата запрос не той формы отдаёт 406 от самого фреймворка —
+    // клиент получил бы невнятную ошибку вместо понятной причины.
+    let part: any;
+    try {
+      part = await req.file();
+    } catch {
+      return reply.code(400).send(err('no_file', 'Запись не передана'));
+    }
+    if (!part) return reply.code(400).send(err('no_file', 'Запись не передана'));
+
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of part.file) {
+      size += chunk.length;
+      if (size > MAX_AUDIO_MB * 1024 * 1024) {
+        return reply.code(413).send(err('too_large', `Запись больше ${MAX_AUDIO_MB} МБ — говорите короче`));
+      }
+      chunks.push(chunk);
+    }
+
+    try {
+      const text = await transcribe(Buffer.concat(chunks), part.filename || 'speech.webm');
+      return { text };
+    } catch (e) {
+      if (e instanceof AiError) {
+        const status = e.code === 'stt_disabled' ? 503
+          : e.code === 'stt_rate_limited' ? 429
+          : e.code === 'stt_too_large' ? 413 : 502;
+        return reply.code(status).send(err(e.code, e.message));
+      }
+      app.log.error(e);
+      return reply.code(502).send(err('stt_failed', 'Не удалось расшифровать запись'));
+    }
+  });
 
   const draftRow = (lessonId: string, location: string) =>
     one<any>('SELECT * FROM ai_drafts WHERE lesson_id = ? AND location_id = ?', lessonId, location);

@@ -76,6 +76,27 @@ export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-opus-5';
 
 /**
+ * РАСШИФРОВКА РЕЧИ — отдельный переключатель, и намеренно.
+ *
+ * У Claude нет входа для звука вообще. Если бы диктовка ходила через тот же
+ * `LMS_AI_PROVIDER`, то переход на платный Claude ради качества уроков молча
+ * ломал бы микрофон. Поэтому речь и текст разведены: уроки может собирать Claude,
+ * а речь расшифровывать Groq — на том же бесплатном ключе.
+ *
+ * По умолчанию включается сам, если ключ Groq задан.
+ */
+export const STT_PROVIDER = ((): 'off' | 'groq' => {
+  const v = (process.env.LMS_STT_PROVIDER ?? '').toLowerCase();
+  if (v === 'off') return 'off';
+  if (v === 'groq') return 'groq';
+  return GROQ_API_KEY ? 'groq' : 'off';
+})();
+export const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL ?? 'whisper-large-v3';
+/** Язык материалов сети. Указанный язык заметно поднимает точность расшифровки. */
+export const STT_LANGUAGE = process.env.LMS_STT_LANGUAGE ?? 'ru';
+export const MAX_AUDIO_MB = Number(process.env.LMS_MAX_AUDIO_MB ?? 20);
+
+/**
  * Предел исходника на один разбор. Ограничивает и счёт, и время ответа:
  * стостраничный документ модель будет жевать минуту, а HR будет смотреть в экран.
  */

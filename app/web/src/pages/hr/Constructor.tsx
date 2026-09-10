@@ -66,7 +66,10 @@ interface Traj {
   blocks: any[];
 }
 interface Loc { id: string; name: string; city: string | null; }
-interface AiStatus { enabled: boolean; provider: string; model: string | null; reason: string | null }
+interface AiStatus {
+  enabled: boolean; provider: string; model: string | null; reason: string | null;
+  stt: { enabled: boolean; provider: string; model: string | null };
+}
 
 function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChange: () => void }) {
   const toast = useToast();
@@ -226,7 +229,7 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
           <div className="body">
             {b.lessons.map((l: any, li: number) => (
               <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
-                ai={!!ai?.enabled}
+                ai={!!ai?.enabled} dictate={!!ai?.stt?.enabled}
                 i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
             ))}
             <InlineAdd placeholder="Название урока" label="+ урок"
@@ -255,9 +258,9 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
   );
 }
 
-function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai }: {
+function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, dictate }: {
   lesson: any; onChange: () => void; i: number; count: number; onMove: (dir: -1 | 1) => void;
-  at: string; locations: Loc[]; ai: boolean;
+  at: string; locations: Loc[]; ai: boolean; dictate: boolean;
 }) {
   const [tab, setTab] = useState<'material' | 'test' | 'scope' | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -298,6 +301,7 @@ function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai }:
           lessonTitle={lesson.title}
           locationId={slot}
           locationName={slot ? here : undefined}
+          canDictate={dictate}
           onClose={() => setAiOpen(false)}
           onApplied={() => { setAiOpen(false); onChange(); }}
         />
