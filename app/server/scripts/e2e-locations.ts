@@ -1,3 +1,4 @@
+import { testIin } from './_iin.ts';
 /* Точки сети, ИИН и содержимое по точкам. Запуск при живом сервере:
      npx tsx scripts/e2e-locations.ts                                       */
 const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
@@ -20,18 +21,13 @@ function check(name: string, ok: boolean, extra = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`);
 }
 
-/** Корректный ИИН: без верной контрольной суммы форма найма его не примет. */
-function iin(n: number): string {
-  const base = `9${n % 10}0315` + '3' + String(10000 + (n % 9000)).slice(1);
-  const d = [...base].map(Number);
-  const w1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  const w2 = [3, 4, 5, 6, 7, 8, 9, 10, 11, 1, 2];
-  const s = (w: number[]) => w.reduce((a, k, i) => a + d[i] * k, 0) % 11;
-  let c = s(w1);
-  if (c === 10) c = s(w2);
-  if (c === 10) return iin(n + 7);
-  return base + c;
-}
+/**
+ * Корректный ИИН берём из общего помощника, а не из своей копии. Копия здесь
+ * была, и она повторяла формулу сида один в один — без сдвига диапазона.
+ * Раз в несколько сотен прогонов номер совпадал с демо-сотрудником, и тест
+ * падал на «этот ИИН уже заведён», хотя ошибки в системе не было.
+ */
+const iin = testIin;
 
 async function main() {
   const login = await j('/auth/login', { method: 'POST', body: { login: 'hr', password: 'hr123' } });

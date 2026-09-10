@@ -558,12 +558,20 @@ function seedSample() {
     uuid(), trajId, 999, 'Аттестация', 'attestation');
 }
 
-/** Первый администратор. Пароль временный: сменить обязан при первом входе. */
-function seedAdmin(): string {
-  const password = process.env.LMS_ADMIN_PASSWORD || randomBytes(6).toString('base64url');
-  run('INSERT INTO users (id, login, password_hash, role, must_change_password) VALUES (?,?,?,?,1)',
-    uuid(), 'admin', hashPassword(password), 'admin');
-  return password;
+/**
+ * Первые два аккаунта: администратор и кадровик. Работать HR должен под своим,
+ * а не под административным — иначе в журнале не отличить, кто что сделал.
+ *
+ * Пароль можно задать переменной окружения. Тогда смена при первом входе не
+ * требуется: пароль выбрал владелец сервера, он не временный. Случайный —
+ * временный по определению, его меняют сразу.
+ */
+function seedUser(login: string, role: 'admin' | 'hr', envVar: string): string {
+  const chosen = process.env[envVar];
+  const password = chosen || randomBytes(6).toString('base64url');
+  run('INSERT INTO users (id, login, password_hash, role, must_change_password) VALUES (?,?,?,?,?)',
+    uuid(), login, hashPassword(password), role, chosen ? 0 : 1);
+  return chosen ? `${password}  (из ${envVar})` : `${password}  (сменить при первом входе)`;
 }
 
 export function seed(opts: { demo?: boolean } = {}) {
@@ -571,8 +579,8 @@ export function seed(opts: { demo?: boolean } = {}) {
 
   if (!opts.demo) {
     seedSample();
-    const password = seedAdmin();
-    console.log(`  вход: admin / ${password}  (пароль нужно сменить при первом входе)`);
+    console.log(`  вход admin: ${seedUser('admin', 'admin', 'LMS_ADMIN_PASSWORD')}`);
+    console.log(`  вход hr:    ${seedUser('hr', 'hr', 'LMS_HR_PASSWORD')}`);
     return;
   }
 
