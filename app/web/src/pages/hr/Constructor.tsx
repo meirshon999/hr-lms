@@ -9,6 +9,7 @@ import { TestEditor } from '../../components/TestEditor';
 import { ConstructorPreview } from '../../components/ConstructorPreview';
 import { AiLessonDialog } from '../../components/AiLessonDialog';
 import { AiPlanDialog } from '../../components/AiPlanDialog';
+import { AiAttestationDialog } from '../../components/AiAttestationDialog';
 
 interface Pos { id: string; name: string; trajectory_status: string; }
 
@@ -84,6 +85,7 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   const toast = useToast();
   const [preview, setPreview] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [attAi, setAttAi] = useState(false);
   // Точка, глазами которой HR смотрит траекторию. Уроки с общим содержимым
   // выглядят одинаково на любой, а точечные показывают вариант выбранной.
   const [at, setAt] = useState('');
@@ -192,6 +194,16 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
         />
       )}
 
+      {attAi && att && (
+        <AiAttestationDialog
+          blockId={att.id}
+          positionName={positionName}
+          hasTest={!!att.test?.questions?.length}
+          onClose={() => setAttAi(false)}
+          onApplied={refresh}
+        />
+      )}
+
       {preview && <ConstructorPreview positionId={positionId} onClose={() => setPreview(false)} />}
 
       {data.problems.length > 0 && (
@@ -269,7 +281,15 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
       {/* attestation */}
       {att && (
         <div className="builder-block" style={{ marginTop: 16, borderColor: 'var(--accent)' }}>
-          <header><h4>★ Аттестация — финальный тест</h4></header>
+          <header className="row-between">
+            <h4>★ Аттестация — финальный тест</h4>
+            {ai?.enabled && (
+              <button className="btn sm" onClick={() => setAttAi(true)}
+                title="Свои вопросы по материалам всех уроков — не повторяющие уроки">
+                ✨ Собрать ИИ
+              </button>
+            )}
+          </header>
           <div className="body">
             <TestEditor
               test={att.test}

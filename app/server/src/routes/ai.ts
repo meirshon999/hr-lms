@@ -11,6 +11,9 @@ import { MAX_AUDIO_MB, MAX_DOC_MB } from '../config.ts';
 import { DocError, extractDocument } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 import { buildTrajectoryPlan, PlanSchema, sourceFor, type Section } from '../ai/plan.ts';
+import {
+  AttestationApplySchema, buildAttestationDraft, suggestedCount,
+} from '../ai/attestation.ts';
 
 const actor = (req: any) => req?.user?.login ?? 'system';
 
@@ -245,6 +248,155 @@ export default async function aiRoutes(app: FastifyInstance) {
       'SELECT source_text FROM ai_lesson_sources WHERE lesson_id = ?', (req.params as any).id);
     if (!row) return reply.code(404).send(err('not_found', 'Исходника нет'));
     return { source_text: row.source_text };
+  });
+
+  // ========================= ФИНАЛЬНАЯ АТТЕСТАЦИЯ =========================
+  //
+  // Собирается по материалам всех уроков траектории — но не по всем подряд.
+  //
+  // Аттестация одна на всю сеть, а содержимое точечного урока на каждой точке
+  // своё. Вопрос по кухне точки А сотрудник точки Б увидит впервые в жизни
+  // и справедливо провалит. Поэтому в основу идут только уроки, которые
+  // одинаковы для всех: стоят везде и содержимое общее.
+
+  const attestationBlock = (blockId: string) =>
+    one<any>(`SELECT * FROM blocks WHERE id = ? AND kind = 'attestation'`, blockId);
+
+  /** Общие уроки траектории с их материалами и уже заданными вопросами. */
+  function sharedLessons(trajectoryId: string) {
+    const lessons = all<any>(
+      `SELECT l.id, l.title, m.text_body
+         FROM lessons l
+         JOIN blocks b ON b.id = l.block_id
+         LEFT JOIN materials m ON m.lesson_id = l.id AND m.location_id = ?
+        WHERE b.trajectory_id = ? AND b.kind = 'regular'
+          AND l.everywhere = 1 AND l.content_per_location = 0
+        ORDER BY b.ord, l.ord`,
+      SHARED, trajectoryId,
+    );
+    const asked = lessons.flatMap((l) => all<{ text: string }>(
+      `SELECT q.text FROM questions q
+         JOIN tests t ON t.id = q.test_id
+        WHERE t.lesson_id = ? AND t.location_id = ?`,
+      l.id, SHARED,
+    ).map((q) => q.text));
+    return { lessons, asked };
+  }
+
+  /** Сколько уроков всего — чтобы честно сказать, что точечные не вошли. */
+  const allLessonCount = (trajectoryId: string) => one<{ n: number }>(
+    `SELECT COUNT(*) n FROM lessons l JOIN blocks b ON b.id = l.block_id
+      WHERE b.trajectory_id = ? AND b.kind = 'regular'`, trajectoryId)!.n;
+
+  app.post('/ai/blocks/:id/attestation', async (req, reply) => {
+    const reason = aiUnavailableReason();
+    if (reason) return reply.code(503).send(err('ai_disabled', reason));
+
+    const block = attestationBlock((req.params as any).id);
+    if (!block) return reply.code(404).send(err('not_found', 'Блок аттестации не найден'));
+
+    const p = z.object({ count: z.number().int().min(5).max(20).optional() }).safeParse(req.body ?? {});
+    if (!p.success) return reply.code(400).send(err('bad_request', 'Вопросов от 5 до 20'));
+
+    const pos = one<{ name: string }>(
+      `SELECT p.name FROM positions p
+         JOIN trajectories t ON t.position_id = p.id
+        WHERE t.id = ?`, block.trajectory_id);
+
+    const { lessons, asked } = sharedLessons(block.trajectory_id);
+    const total = allLessonCount(block.trajectory_id);
+
+    try {
+      const r = await buildAttestationDraft({
+        positionName: pos?.name ?? 'сотрудник',
+        lessons: lessons.map((l) => ({ title: l.title, material: l.text_body ?? '' })),
+        askedInLessons: asked,
+        count: p.data.count ?? suggestedCount(lessons.length),
+      });
+
+      run(
+        `INSERT INTO ai_block_drafts (block_id, draft_json, provider, model, created_by, created_at)
+         VALUES (?,?,?,?,?,?)
+         ON CONFLICT(block_id) DO UPDATE SET
+           draft_json = excluded.draft_json, provider = excluded.provider,
+           model = excluded.model, created_by = excluded.created_by, created_at = excluded.created_at`,
+        block.id, JSON.stringify(r.data), r.provider, r.model, actor(req), stamp(),
+      );
+
+      // Три числа вместо одного «пропущено»: кадровику важно различать
+      // «урок ещё не заполнен» (это чинится) и «урок точечный» (так задумано).
+      return {
+        draft: r.data,
+        provider: r.provider,
+        model: r.model,
+        based_on: r.basedOn,
+        empty: lessons.length - r.basedOn,
+        per_location: total - lessons.length,
+        avoided: asked.length,
+      };
+    } catch (e) {
+      if (e instanceof AiError) {
+        const status = e.code === 'ai_rate_limited' ? 429
+          : e.code === 'ai_disabled' ? 503
+          : e.code.startsWith('source_') ? 422 : 502;
+        return reply.code(status).send(err(e.code, e.message));
+      }
+      app.log.error(e);
+      return reply.code(502).send(err('ai_failed', 'Не удалось собрать аттестацию — попробуйте ещё раз'));
+    }
+  });
+
+  app.get('/ai/blocks/:id/attestation', async (req, reply) => {
+    const row = one<any>('SELECT * FROM ai_block_drafts WHERE block_id = ?', (req.params as any).id);
+    if (!row) return reply.code(404).send(err('not_found', 'Черновика нет'));
+    return {
+      draft: JSON.parse(row.draft_json),
+      provider: row.provider, model: row.model,
+      created_by: row.created_by, created_at: row.created_at,
+    };
+  });
+
+  app.delete('/ai/blocks/:id/attestation', async (req) => {
+    run('DELETE FROM ai_block_drafts WHERE block_id = ?', (req.params as any).id);
+    return { ok: true };
+  });
+
+  /** Единственное место, где собранная аттестация попадает в каталог (C-13). */
+  app.post('/ai/blocks/:id/attestation/apply', async (req, reply) => {
+    const block = attestationBlock((req.params as any).id);
+    if (!block) return reply.code(404).send(err('not_found', 'Блок аттестации не найден'));
+
+    const p = z.object({
+      draft: AttestationApplySchema,
+      pass_mark_pct: z.number().int().min(1).max(100).optional(),
+    }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'Черновик не той формы'));
+
+    const existing = one<{ id: string; pass_mark_pct: number }>(
+      'SELECT id, pass_mark_pct FROM tests WHERE block_id = ? AND location_id = ?', block.id, SHARED);
+    const passMark = p.data.pass_mark_pct ?? existing?.pass_mark_pct ?? 70;
+
+    let testId = existing?.id;
+    if (testId) {
+      run('UPDATE tests SET pass_mark_pct = ? WHERE id = ?', passMark, testId);
+      // Вопросы заменяются целиком: иначе к новым добавились бы прежние,
+      // и аттестация выросла бы вдвое при каждой пересборке.
+      run('DELETE FROM questions WHERE test_id = ?', testId);
+    } else {
+      testId = uuid();
+      run('INSERT INTO tests (id, block_id, location_id, pass_mark_pct) VALUES (?,?,?,?)',
+        testId, block.id, SHARED, passMark);
+    }
+
+    p.data.draft.questions.forEach((q, i) => {
+      run('INSERT INTO questions (id, test_id, ord, text, options, correct_index) VALUES (?,?,?,?,?,?)',
+        uuid(), testId, i + 1, q.text, JSON.stringify(q.options), q.correct_index);
+    });
+
+    run('DELETE FROM ai_block_drafts WHERE block_id = ?', block.id);
+    audit(actor(req), 'ai_attestation_apply', null,
+      p.data.draft.questions.length + ' вопросов');
+    return { test_id: testId, questions: p.data.draft.questions.length, pass_mark_pct: passMark };
   });
 
   const draftRow = (lessonId: string, location: string) =>

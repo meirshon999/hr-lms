@@ -955,6 +955,57 @@ paths:
       description: Подставляется в поле сборки, чтобы не искать абзац в регламенте заново.
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: "{ source_text }" }, "404": { description: урок заводили руками } }
+  /ai/blocks/{id}/attestation:
+    post:
+      tags: [ai]
+      summary: Собрать финальную аттестацию по материалам уроков
+      description: >
+        Вопросы СВОИ, а не переписанные из уроков: модели показывают уже заданные
+        и просят спросить иначе — повтор проверял бы память на ответы, которые
+        сотрудник видел час назад. В основу идут только общие уроки: аттестация
+        одна на сеть, а содержимое точечного урока на каждой точке своё.
+        Каталога не касается.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { count: { type: integer, minimum: 5, maximum: 20 } }
+      responses:
+        "200": { description: "{ draft, provider, model, based_on, empty, per_location, avoided }" }
+        "404": { description: это не блок аттестации }
+        "422": { description: "source_too_short — заполненных уроков меньше двух" }
+    get:
+      tags: [ai]
+      summary: Сохранённый черновик аттестации
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: черновика нет } }
+    delete:
+      tags: [ai]
+      summary: Выбросить черновик аттестации
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /ai/blocks/{id}/attestation/apply:
+    post:
+      tags: [ai]
+      summary: Черновик становится аттестацией
+      description: >
+        Вопросы заменяются целиком — иначе при каждой пересборке тест удваивался бы.
+        Принимается то, что прислал человек: он вправе выбросить лишние вопросы
+        и оставить хоть три.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [draft]
+              properties:
+                draft: { type: object }
+                pass_mark_pct: { type: integer, minimum: 1, maximum: 100 }
+      responses: { "200": { description: "{ test_id, questions, pass_mark_pct }" } }
   /ai/drafts:
     get:
       tags: [ai]

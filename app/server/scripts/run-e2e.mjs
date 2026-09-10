@@ -21,6 +21,7 @@ const SUITES = [
   ['e2e-users', 'роли и служебные аккаунты'],
   ['e2e-funnel', 'воронка по должностям'],
   ['e2e-plan', 'план траектории из документа'],
+  ['e2e-attestation', 'финальная аттестация одной кнопкой'],
 ];
 
 const PORT = Number(process.env.LMS_TEST_PORT ?? 3999);

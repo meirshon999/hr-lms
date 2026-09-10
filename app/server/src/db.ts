@@ -228,6 +228,16 @@ CREATE TABLE IF NOT EXISTS ai_lesson_sources (
   source_text TEXT NOT NULL
 );
 
+-- Черновик финальной аттестации. Она одна на всю сеть, поэтому точки здесь нет.
+CREATE TABLE IF NOT EXISTS ai_block_drafts (
+  block_id   TEXT PRIMARY KEY REFERENCES blocks(id) ON DELETE CASCADE,
+  draft_json TEXT NOT NULL,
+  provider   TEXT NOT NULL,
+  model      TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   ts          TEXT NOT NULL,
@@ -275,7 +285,7 @@ export function migrate() {
 /** Полный сброс: удаляет все данные (только тестовый сервер). */
 export function wipe() {
   const tables = [
-    'audit_log', 'ai_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
+    'audit_log', 'ai_drafts', 'ai_block_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lesson_locations', 'lessons', 'blocks',
     'pre_onboarding_items', 'trajectories', 'positions', 'locations', 'users',
     'app_state', 'files',

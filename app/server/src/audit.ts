@@ -41,6 +41,8 @@ export const ACTION_LABEL: Record<string, string> = {
   user_enable: 'Включил аккаунт',
   user_reset_password: 'Сбросил пароль аккаунта',
   ai_apply: 'Подтвердил урок, собранный ИИ',
+  ai_plan_apply: 'Создал траекторию из документа',
+  ai_attestation_apply: 'Подтвердил аттестацию, собранную ИИ',
   publish: 'Опубликовал траекторию',
   unpublish: 'Снял траекторию с публикации',
 };
