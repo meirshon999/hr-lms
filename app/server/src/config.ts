@@ -62,10 +62,6 @@ export const CORS_ORIGINS = (process.env.LMS_ORIGINS ?? '')
  *   anthropic — Claude: платно, но читает PDF и картинки без сторонних библиотек
  */
 export type AiProvider = 'off' | 'groq' | 'anthropic';
-export const AI_PROVIDER = ((): AiProvider => {
-  const v = (process.env.LMS_AI_PROVIDER ?? 'off').toLowerCase();
-  return v === 'groq' || v === 'anthropic' ? v : 'off';
-})();
 
 export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
 /** Названия моделей у Groq меняются — держим в переменной, а не в коде. */
@@ -74,6 +70,21 @@ export const GROQ_BASE_URL = process.env.GROQ_BASE_URL ?? 'https://api.groq.com/
 
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-opus-5';
+
+/**
+ * Провайдер можно назвать явно, но если не назвали — выводим из того, какой ключ
+ * задан. Иначе выходит ловушка: человек добавил ключ, всё выглядит настроенным,
+ * а кнопок нет, потому что не хватает второй переменной, о которой он не знал.
+ * Явный `off` выключает всегда.
+ */
+export const AI_PROVIDER = ((): AiProvider => {
+  const v = (process.env.LMS_AI_PROVIDER ?? '').toLowerCase();
+  if (v === 'off') return 'off';
+  if (v === 'groq' || v === 'anthropic') return v;
+  if (ANTHROPIC_API_KEY) return 'anthropic';
+  if (GROQ_API_KEY) return 'groq';
+  return 'off';
+})();
 
 /**
  * РАСШИФРОВКА РЕЧИ — отдельный переключатель, и намеренно.

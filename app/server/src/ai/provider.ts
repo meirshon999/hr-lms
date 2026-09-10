@@ -27,7 +27,8 @@ export const aiEnabled = () => AI_PROVIDER !== 'off';
 
 /** Что показать HR, если функция не работает: причина всегда в настройке сервера. */
 export function aiUnavailableReason(): string | null {
-  if (AI_PROVIDER === 'off') return 'ИИ-конструктор выключен: не задан LMS_AI_PROVIDER';
+  if (AI_PROVIDER === 'off')
+    return 'ИИ-конструктор выключен: не задан ни GROQ_API_KEY, ни ANTHROPIC_API_KEY';
   if (AI_PROVIDER === 'groq' && !GROQ_API_KEY) return 'Не задан GROQ_API_KEY';
   if (AI_PROVIDER === 'anthropic' && !ANTHROPIC_API_KEY) return 'Не задан ANTHROPIC_API_KEY';
   return null;
@@ -85,10 +86,7 @@ async function viaAnthropic<T>(req: AiRequest<T>): Promise<AiResult<T>> {
     model: ANTHROPIC_MODEL,
     max_tokens: req.maxTokens ?? 16000,
     system: req.system,
-    messages: [{ role: 'user', content: `${req.user}
-
-Форма ответа:
-${req.shape}` }],
+    messages: [{ role: 'user', content: `${req.user}\n\nФорма ответа:\n${req.shape}` }],
     output_config: { format: zodOutputFormat(req.schema as any) },
   });
 
