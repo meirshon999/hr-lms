@@ -27,8 +27,9 @@ npm run seed         # первичное наполнение базы
 
 ```bash
 # проверка типов (обязательна перед коммитом)
-cd app/server && npx tsc --noEmit
-cd app/web    && npx tsc --noEmit
+cd app/server && npx tsc --noEmit                    # исходники сервера
+cd app/server && npx tsc -p tsconfig.scripts.json    # сквозные наборы
+cd app/web    && npx tsc --noEmit                    # фронт
 
 # сквозные наборы: нужен живой сервер с LMS_DEV_TOOLS=1
 cd app/server

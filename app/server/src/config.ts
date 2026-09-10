@@ -113,6 +113,8 @@ export const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL ?? 'whisper-large-v3';
 /** Язык материалов сети. Указанный язык заметно поднимает точность расшифровки. */
 export const STT_LANGUAGE = process.env.LMS_STT_LANGUAGE ?? 'ru';
 export const MAX_AUDIO_MB = Number(process.env.LMS_MAX_AUDIO_MB ?? 20);
+/** Регламент в Word — это текст: даже сотня страниц весит меньше мегабайта. */
+export const MAX_DOC_MB = Number(process.env.LMS_MAX_DOC_MB ?? 10);
 
 /**
  * Предел исходника на один разбор. Ограничивает и счёт, и время ответа:

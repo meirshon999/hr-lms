@@ -79,6 +79,28 @@ export async function transcribeAudio(blob: Blob, filename = 'speech.webm'): Pro
   return (data as any).text as string;
 }
 
+/**
+ * Документ Word или текстовый файл — в текст. Файл на сервере не остаётся:
+ * человек увидит разобранный текст в поле и сможет поправить его до того,
+ * как что-то уйдёт модели.
+ */
+export async function extractDocument(file: File): Promise<{ text: string; chars: number }> {
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+  const t = token();
+  const res = await fetch(BASE + '/ai/extract', {
+    method: 'POST',
+    headers: t ? { authorization: `Bearer ${t}` } : {},
+    body: fd,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = (data as any)?.error;
+    throw new ApiError(res.status, e?.code ?? 'doc_failed', e?.message ?? 'Не удалось прочитать документ');
+  }
+  return data as { text: string; chars: number };
+}
+
 export function upload(file: File, onProgress?: (pct: number) => void): Promise<Uploaded> {
   return new Promise((resolve, reject) => {
     const fd = new FormData();

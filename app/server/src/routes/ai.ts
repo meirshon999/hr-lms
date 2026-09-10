@@ -7,7 +7,8 @@ import { stamp } from '../clock.ts';
 import { contentSlot } from '../content.ts';
 import { AiError, aiInfo, aiUnavailableReason } from '../ai/provider.ts';
 import { sttInfo, transcribe } from '../ai/transcribe.ts';
-import { MAX_AUDIO_MB } from '../config.ts';
+import { MAX_AUDIO_MB, MAX_DOC_MB } from '../config.ts';
+import { DocError, extractDocument } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 
 const actor = (req: any) => req?.user?.login ?? 'system';
@@ -68,6 +69,43 @@ export default async function aiRoutes(app: FastifyInstance) {
       }
       app.log.error(e);
       return reply.code(502).send(err('stt_failed', 'Не удалось расшифровать запись'));
+    }
+  });
+
+  /**
+   * Документ — в текст. Файл не сохраняем: он нужен ровно на время разбора,
+   * а результат человек всё равно увидит в поле и сможет поправить до того,
+   * как что-то уйдёт модели.
+   */
+  app.post('/ai/extract', async (req: any, reply) => {
+    let part: any;
+    try {
+      part = await req.file();
+    } catch {
+      return reply.code(400).send(err('no_file', 'Файл не передан'));
+    }
+    if (!part) return reply.code(400).send(err('no_file', 'Файл не передан'));
+
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of part.file) {
+      size += chunk.length;
+      if (size > MAX_DOC_MB * 1024 * 1024) {
+        return reply.code(413).send(err('too_large', `Документ больше ${MAX_DOC_MB} МБ`));
+      }
+      chunks.push(chunk);
+    }
+
+    try {
+      const r = extractDocument(Buffer.concat(chunks), part.filename || '');
+      if (!r.text) {
+        return reply.code(422).send(err('doc_empty', 'В документе не нашлось текста'));
+      }
+      return { text: r.text, headings: r.headings, kind: r.kind, chars: r.text.length };
+    } catch (e) {
+      if (e instanceof DocError) return reply.code(422).send(err(e.code, e.message));
+      app.log.error(e);
+      return reply.code(500).send(err('doc_failed', 'Не удалось прочитать документ'));
     }
   });
 

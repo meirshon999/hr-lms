@@ -12,7 +12,12 @@ async function j(p: string, o: any = {}): Promise<{ s: number; d: any }> {
   return { s: r.status, d: t ? JSON.parse(t) : null };
 }
 const results: boolean[] = [];
-const check = (name: string, cond: boolean) => { results.push(cond); console.log((cond ? 'PASS ' : 'FAIL ') + name); };
+// `extra` — подробность на случай провала: без неё падение показывает только
+// название проверки, и причину приходится искать заново руками.
+const check = (name: string, cond: boolean, extra = '') => {
+  results.push(cond);
+  console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? ' — ' + extra : ''));
+};
 
 async function main() {
   const hr = (await j('/auth/login', { method: 'POST', body: { login: 'hr', password: 'hr123' } })).d.token;

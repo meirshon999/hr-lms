@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { del, get, post, transcribeAudio, ApiError } from '../api';
+import { del, extractDocument, get, post, transcribeAudio, ApiError } from '../api';
 import { useToast } from '../lib';
 
 interface Question { text: string; options: string[]; correct_index: number }
@@ -32,10 +32,11 @@ export function AiLessonDialog({
   const [source, setSource] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [meta, setMeta] = useState<{ provider: string; model: string } | null>(null);
-  const [busy, setBusy] = useState<'build' | 'apply' | 'stt' | null>(null);
+  const [busy, setBusy] = useState<'build' | 'apply' | 'stt' | 'doc' | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [recSeconds, setRecSeconds] = useState<number | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
+  const filePick = useRef<HTMLInputElement | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const q = locationId ? `?location=${encodeURIComponent(locationId)}` : '';
@@ -154,6 +155,27 @@ export function AiLessonDialog({
     setDraft({ ...draft, questions });
   }
 
+  /**
+   * Документ добавляется к тому, что уже набрано, а не затирает его: HR может
+   * собрать урок из двух памяток или дописать своё к выгруженному тексту.
+   */
+  async function pickDocument(file: File) {
+    setBusy('doc'); setErr(null);
+    try {
+      const r = await extractDocument(file);
+      setSource((prev) => (prev.trim() ? `${prev.trim()}
+
+${r.text}` : r.text));
+      toast(`Прочитано ${r.chars} символов`);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось прочитать документ');
+    } finally {
+      setBusy(null);
+      // Сбрасываем выбор: иначе тот же файл вторым разом не выберется.
+      if (filePick.current) filePick.current.value = '';
+    }
+  }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal ai-modal" onClick={(e) => e.stopPropagation()}>
@@ -180,6 +202,14 @@ export function AiLessonDialog({
             <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="muted" style={{ fontSize: 12 }}>{source.trim().length} символов</span>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input ref={filePick} type="file" accept=".docx,.txt,.md" hidden
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) pickDocument(f); }} />
+                {recSeconds === null && (
+                  <button className="btn ghost sm" disabled={busy !== null}
+                    onClick={() => filePick.current?.click()}>
+                    {busy === 'doc' ? 'Читаем…' : '📄 Загрузить документ'}
+                  </button>
+                )}
                 {canDictate && recSeconds === null && (
                   <button className="btn ghost sm" disabled={busy !== null} onClick={startRecording}>
                     {busy === 'stt' ? 'Расшифровываем…' : '🎤 Надиктовать'}
@@ -195,9 +225,10 @@ export function AiLessonDialog({
                 </button>
               </span>
             </div>
-            {canDictate && recSeconds === null && busy !== 'stt' && (
+            {recSeconds === null && busy === null && (
               <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Можно не печатать: расскажите вслух, текст добавится сюда же.
+                Можно не печатать: загрузите файл Word{canDictate && ' или расскажите вслух'} —
+                текст добавится сюда же.
               </p>
             )}
             {source.trim().length > 0 && source.trim().length < 200 && (

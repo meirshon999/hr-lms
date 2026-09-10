@@ -1,4 +1,5 @@
 import { testIin } from './_iin.ts';
+import { sampleDocx } from './_docx.ts';
 /* ИИ-конструктор. Проверяет то, что можно проверить без ключа и без денег:
    выключенное состояние, разбор слотов и применение черновика в каталог.
      npx tsx scripts/e2e-ai.ts                                              */
@@ -123,6 +124,50 @@ async function main() {
     method: 'POST', h, body: { draft: { title: 'x', material: 'y', questions: [] } },
   });
   check('черновик без вопросов отклоняется', empty.s === 400, String(empty.s));
+
+  // ---------- документ как исходник ----------
+  const send = async (data: Buffer, filename: string) => {
+    const fd = new FormData();
+    fd.append('file', new Blob([new Uint8Array(data)]), filename);
+    const r = await fetch(`${B}/ai/extract`, { method: 'POST', headers: h, body: fd });
+    const t = await r.text();
+    return { s: r.status, d: t ? JSON.parse(t) : null };
+  };
+
+  const docx = await send(sampleDocx(), 'reglament.docx');
+  check('docx разбирается', docx.s === 200, docx.d?.error?.message ?? '');
+  const text: string = docx.d?.text ?? '';
+  check('текст абзаца собран из кусков', text.includes('за пятнадцать минут до открытия'));
+  check('амперсанд раскрыт', text.includes('форму & проверяет'));
+  check('кавычки раскрыты', text.includes('у "шефа" до'));
+  check('тире из кода символа на месте', text.includes('17:00 —'));
+  check('заголовки помечены', text.includes('# Открытие смены') && text.includes('## Стоп-лист'));
+  check('русский стиль заголовка распознан', text.includes('## Зоны зала'));
+  check('строка таблицы склеена', text.includes('Бар | Бармен'));
+  check('оглавление отдано отдельно', (docx.d?.headings ?? []).length >= 4,
+    JSON.stringify(docx.d?.headings?.map((x: any) => x.title)));
+
+  const txt = await send(
+    Buffer.from('Правила стоп-листа\nУточняют у шефа до 17:00.', 'utf8'), 'pamyatka.txt');
+  check('текстовый файл разбирается', txt.s === 200 && txt.d.text.includes('стоп-листа'));
+
+  const win1251 = await send(
+    Buffer.from(new Uint8Array([0xcf, 0xf0, 0xe0, 0xe2, 0xe8, 0xeb, 0xe0])), 'stary.txt');
+  check('файл в кодировке Windows читается, а не рассыпается',
+    win1251.s === 200 && win1251.d.text === 'Правила', JSON.stringify(win1251.d?.text));
+
+  const old = await send(Buffer.from('x'), 'reglament.doc');
+  check('старый .doc отклоняется с подсказкой',
+    old.s === 422 && old.d?.error?.code === 'doc_old_format', old.d?.error?.message ?? '');
+  const pdf = await send(Buffer.from('%PDF-1.4'), 'reglament.pdf');
+  check('pdf отклоняется честно', pdf.s === 422 && pdf.d?.error?.code === 'doc_pdf');
+  const junk = await send(Buffer.from('это не архив'), 'reglament.docx');
+  check('битый docx отклоняется, а не роняет сервер',
+    junk.s === 422 && junk.d?.error?.code === 'doc_broken', String(junk.s));
+
+  const noDoc = await j('/ai/extract', { method: 'POST', h });
+  check('разбор без файла отклоняется понятной ошибкой',
+    noDoc.s === 400 && noDoc.d?.error?.code === 'no_file', `${noDoc.s} ${noDoc.d?.error?.code ?? ''}`);
 
   // ---------- расшифровка речи ----------
   const noFile = await j('/ai/transcribe', { method: 'POST', h });
