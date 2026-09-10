@@ -136,7 +136,10 @@ async function main() {
   }
 
   // ---------- в журнале осталась запись, что урок собран ИИ ----------
-  const log = (await j('/audit?limit=20', { h })).d;
+  // Журнал читает администратор, а не кадровик: смысл записи в том, чтобы её
+  // видел кто-то другой, а не тот же человек, о ком она сделана.
+  const admin = await j('/auth/login', { method: 'POST', body: { login: 'admin', password: 'admin123' } });
+  const log = (await j('/audit?limit=20', { h: { authorization: `Bearer ${admin.d.token}` } })).d;
   check('применение записано в журнал', JSON.stringify(log).includes('ai_apply'));
 
   console.log(failed ? `\n${failed} провалено` : '\nвсе проверки пройдены');

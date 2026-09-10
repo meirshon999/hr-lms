@@ -19,6 +19,8 @@ tags:
     description: конструктор контента (роли hr, admin)
   - name: analytics
     description: сводка для HR
+  - name: admin
+    description: аккаунты, состав сети и журнал (только роль admin)
   - name: dev
     description: ТОЛЬКО прототип — демо-часы и сброс; в проде модуля нет
 
@@ -864,13 +866,65 @@ paths:
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: ok } }
 
-  # ---------------- analytics ----------------
+  # ---------------- admin ----------------
+  # Кадровику все адреса ниже отвечают 403: он ведёт людей и содержание,
+  # доступы и устройство сети — дело администратора.
   /audit:
     get:
-      tags: [analytics]
-      summary: Общий журнал действий HR/админа
+      tags: [admin]
+      summary: Общий журнал действий (только admin)
       parameters: [{ name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }]
       responses: { "200": { description: "{ items: [{ ts, actor_login, action, employee_id, detail }] }" } }
+  /users:
+    get:
+      tags: [admin]
+      summary: Аккаунты кадровиков и администраторов
+      description: Учётки сотрудников сюда не попадают — они заводятся вместе с человеком.
+      responses: { "200": { description: "{ items: [{ id, login, role, is_active, must_change_password }] }" } }
+    post:
+      tags: [admin]
+      summary: Завести служебный аккаунт
+      description: >
+        Пароль возвращается ОДИН раз — в базе лежит только свёртка. Не задан —
+        придумывается системой. Аккаунт всегда создаётся с временным паролем.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, role]
+              properties:
+                login: { type: string, minLength: 2, maxLength: 40, pattern: "^[a-zA-Z0-9._-]+$" }
+                role: { type: string, enum: [hr, admin] }
+                password: { type: string, minLength: 6, maxLength: 72 }
+      responses:
+        "201": { description: "{ id, login, role, password }" }
+        "422": { description: login_exists }
+  /users/{id}:
+    patch:
+      tags: [admin]
+      summary: Включить или отключить аккаунт
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_active]
+              properties: { is_active: { type: boolean } }
+      responses:
+        "200": { description: "{ id, is_active }" }
+        "422": { description: "self_disable — собственный аккаунт отключить нельзя" }
+  /users/{id}/reset-password:
+    post:
+      tags: [admin]
+      summary: Выдать новый временный пароль
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ login, password }" } }
+
+  # ---------------- analytics ----------------
   /analytics:
     get:
       tags: [analytics]

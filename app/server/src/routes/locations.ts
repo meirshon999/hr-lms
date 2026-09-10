@@ -16,7 +16,11 @@ const schema = z.object({
  * но на него завязано всё — сотрудник, контент урока и аналитика.
  */
 export default async function locationRoutes(app: FastifyInstance) {
+  // Список нужен кадровику: без него не принять человека и не открыть урок.
   app.addHook('preHandler', authRequired('hr', 'admin'));
+  /** Менять состав сети — дело администратора: точка это не запись в справочнике,
+   *  на неё завязаны снимки траекторий, содержание уроков и вся аналитика. */
+  const adminOnly = { preHandler: authRequired('admin') };
 
   app.get('/locations', async (req) => {
     const q = req.query as Record<string, string>;
@@ -32,7 +36,7 @@ export default async function locationRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/locations', async (req, reply) => {
+  app.post('/locations', adminOnly, async (req, reply) => {
     const p = schema.safeParse(req.body);
     if (!p.success) return reply.code(400).send(err('bad_request', 'Название обязательно'));
     if (one('SELECT 1 FROM locations WHERE name = ?', p.data.name))
@@ -45,7 +49,7 @@ export default async function locationRoutes(app: FastifyInstance) {
     return reply.code(201).send({ id });
   });
 
-  app.patch('/locations/:id', async (req, reply) => {
+  app.patch('/locations/:id', adminOnly, async (req, reply) => {
     const id = (req.params as any).id;
     const cur = one<any>('SELECT * FROM locations WHERE id = ?', id);
     if (!cur) return reply.code(404).send(err('not_found', 'Точка не найдена'));

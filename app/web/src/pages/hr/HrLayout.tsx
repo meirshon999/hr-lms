@@ -4,6 +4,7 @@ import { Logo } from '../../components/Logo';
 
 export function HrLayout() {
   const { me, logout } = useAuth();
+  const isAdmin = me?.user.role === 'admin';
   return (
     <div className="hr-app">
       <nav className="hr-side">
@@ -16,6 +17,9 @@ export function HrLayout() {
           <NavLink to="/hr/overview" className={({ isActive }) => (isActive ? 'active' : '')}>Обзор</NavLink>
           <NavLink to="/hr/employees" className={({ isActive }) => (isActive ? 'active' : '')}>Сотрудники</NavLink>
           <NavLink to="/hr/constructor" className={({ isActive }) => (isActive ? 'active' : '')}>Конструктор</NavLink>
+          {isAdmin && (
+            <NavLink to="/hr/accounts" className={({ isActive }) => (isActive ? 'active' : '')}>Аккаунты</NavLink>
+          )}
         </div>
         <div className="who">
           <span className="acct">{me?.user.login} · {me?.user.role}</span>

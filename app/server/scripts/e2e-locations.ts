@@ -34,15 +34,23 @@ async function main() {
   if (login.s !== 200) { console.log('нет входа hr/hr123 — нужен тестовый сервер с LMS_DEV_TOOLS=1'); process.exit(2); }
   hrH = { authorization: `Bearer ${login.d.token}` };
 
+  const adm = await j('/auth/login', { method: 'POST', body: { login: 'admin', password: 'admin123' } });
+  const admH = { authorization: `Bearer ${adm.d.token}` };
+
   // ---------- справочник точек ----------
   const locs = (await j('/locations', { h: hrH })).d.items;
   check('точки заведены', locs.length >= 3, locs.map((l: any) => l.name).join(', '));
   const [A, Bl, C] = locs;
 
-  const dup = await j('/locations', { method: 'POST', h: hrH, body: { name: A.name } });
+  // Состав сети меняет администратор: на точку завязаны снимки, содержание
+  // уроков и аналитика, и это не та правка, которую делают между делом.
+  const byHr = await j('/locations', { method: 'POST', h: hrH, body: { name: `Точка ${uniq}` } });
+  check('кадровик не может завести точку', byHr.s === 403, String(byHr.s));
+
+  const dup = await j('/locations', { method: 'POST', h: admH, body: { name: A.name } });
   check('точка с тем же названием не создаётся', dup.s === 422);
 
-  const busy = await j(`/locations/${A.id}`, { method: 'PATCH', h: hrH, body: { is_active: false } });
+  const busy = await j(`/locations/${A.id}`, { method: 'PATCH', h: admH, body: { is_active: false } });
   check('точку с людьми нельзя закрыть', busy.s === 409, busy.d?.error?.message ?? '');
 
   // ---------- ИИН ----------

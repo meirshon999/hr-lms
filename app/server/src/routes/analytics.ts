@@ -3,7 +3,6 @@ import { all, one } from '../db.ts';
 import { authRequired } from '../auth.ts';
 import { isOverdue } from '../domain.ts';
 import { regularBlocks, snapshotOf } from '../snapshot.ts';
-import { auditRecent } from '../audit.ts';
 
 function daysBetween(a: string, b: string): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
@@ -118,8 +117,5 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/audit', async (req) => {
-    const limit = Number((req.query as any)?.limit ?? 100);
-    return { items: auditRecent(Math.min(Math.max(limit, 1), 500)) };
-  });
+  // Журнал действий переехал к администратору — см. routes/users.ts.
 }

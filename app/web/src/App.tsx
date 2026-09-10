@@ -12,6 +12,7 @@ import { Overview } from './pages/hr/Overview';
 import { Employees } from './pages/hr/Employees';
 import { EmployeeCard } from './pages/hr/EmployeeCard';
 import { Constructor } from './pages/hr/Constructor';
+import { Accounts } from './pages/hr/Accounts';
 
 export function App() {
   const { me, loading } = useAuth();
@@ -30,6 +31,10 @@ export function App() {
   if (me.user.must_change_password) return <ChangePassword />;
 
   const isHr = me.user.role === 'hr' || me.user.role === 'admin';
+  // Администратор отвечает за доступы и устройство сети — кадровик за людей
+  // и содержание. Маршрута аккаунтов у кадровика нет вовсе, а не просто
+  // спрятана ссылка: адрес, набранный руками, тоже никуда не приведёт.
+  const isAdmin = me.user.role === 'admin';
 
   return (
     <Routes>
@@ -49,6 +54,7 @@ export function App() {
           <Route path="/hr/employees/:id" element={<EmployeeCard />} />
           <Route path="/hr/constructor" element={<Constructor />} />
           <Route path="/hr/constructor/:positionId" element={<Constructor />} />
+          {isAdmin && <Route path="/hr/accounts" element={<Accounts />} />}
         </Route>
       </>}
 

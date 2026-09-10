@@ -23,6 +23,7 @@ import devRoutes from './routes/dev.ts';
 import fileRoutes from './routes/files.ts';
 import locationRoutes from './routes/locations.ts';
 import aiRoutes from './routes/ai.ts';
+import userRoutes from './routes/users.ts';
 
 migrate();
 // Первый запуск с пустой базой. В бою — только справочники и образец траектории;
@@ -65,6 +66,7 @@ await app.register(analyticsRoutes, { prefix: '/api/v1' });
 if (DEV_TOOLS) await app.register(devRoutes, { prefix: '/api/v1' });
 await app.register(fileRoutes, { prefix: '/api/v1' });
 await app.register(aiRoutes, { prefix: '/api/v1' });
+await app.register(userRoutes, { prefix: '/api/v1' });
 
 // Swagger UI из openapi.yaml (в корне проекта) — живое дерево API на /docs
 const __dir = dirname(fileURLToPath(import.meta.url));
