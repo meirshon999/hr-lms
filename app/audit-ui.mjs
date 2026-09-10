@@ -25,15 +25,16 @@ const api = async (p, o = {}) => {
 const ch = spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   [`--remote-debugging-port=${P}`, '--headless=new', '--disable-gpu', '--no-first-run',
    '--user-data-dir=' + process.env.TEMP + '\\cdp-audit', 'about:blank'], { stdio: 'ignore' });
-let v; for (let i = 0; i < 60; i++) { await sleep(500); try { v = await (await fetch(`http://localhost:${P}/json/version`)).json(); break; } catch {} }
-let ws = new WebSocket(v.webSocketDebuggerUrl), id = 0; const pend = new Map();
+let v; for (let i = 0; i < 60; i++) { await sleep(500); try { v = await (await fetch(`http://localhost:${P}/json/version`)).json(); break; } catch { /* браузер ещё поднимается — пробуем снова */ } }
+const ws = new WebSocket(v.webSocketDebuggerUrl); let id = 0; const pend = new Map();
 const evs = [];
 await new Promise(r => ws.addEventListener('open', r));
 ws.addEventListener('message', e => {
   const m = JSON.parse(e.data);
   if (m.id && pend.has(m.id)) {
     const p = pend.get(m.id); pend.delete(m.id);
-    m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result);
+    if (m.error) p.rej(new Error(JSON.stringify(m.error)));
+    else p.res(m.result);
   } else if (m.method) evs.push(m);
 });
 const send = (m, params = {}, sid) => new Promise((res, rej) => {
@@ -243,7 +244,17 @@ await go(`${APP}/?t=${adm}#/hr/overview`);
 check('админ видит Обзор', /Обзор/.test(await txt()));
 await go(`${APP}/?t=${adm}#/hr/constructor`, 2500);
 check('админ видит конструктор', /Конструктор|Траектория/.test(await txt()));
+await go(`${APP}/?t=${adm}#/hr/accounts`, 2000);
+const accT = await txt();
+check('админ видит аккаунты', /Аккаунты/.test(accT) && /Кадровик|Администратор/.test(accT));
 drain('админ');
+
+at('Кадровик — экрана аккаунтов у него нет');
+// Не спрятанная кнопка, а отсутствующий маршрут: адрес, набранный руками,
+// должен увести на обычный экран, а не показать чужой раздел.
+await go(`${APP}/?t=${hr}#/hr/accounts`, 2000);
+check('кадровика с адреса аккаунтов уводит', !/Новый аккаунт/.test(await txt()));
+drain('кадровик на чужом адресе');
 
 // ================= сотрудник =================
 await metrics(390, 844, true);
@@ -293,6 +304,6 @@ if (created) await api(`/employees/${created.id}/internship-failed`, { method: '
 
 log(NL + (bad ? `НАЙДЕНО ПРОБЛЕМ: ${bad}` : 'ВСЁ ЧИСТО'));
 for (const p of problems) log('  • ' + p);
-try { await send('Browser.close'); } catch {}
+try { await send('Browser.close'); } catch { /* браузер мог закрыться сам */ }
 ch.kill();
 process.exit(bad ? 1 : 0);

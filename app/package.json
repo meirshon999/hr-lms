@@ -10,12 +10,26 @@
     "dev:web": "npm --prefix web run dev",
     "seed": "npm --prefix server run seed",
     "build": "npm --prefix server run build && npm --prefix web run build",
-    "start": "node server/dist/index.js"
+    "start": "node server/dist/index.js",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix web run typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm --prefix server run test",
+    "check": "npm run typecheck && npm run lint && npm test"
   },
   "engines": {
     "node": ">=22.13"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.1.2",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.70.0"
   }
 }

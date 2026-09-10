@@ -16,7 +16,12 @@ function token(): string | null {
   try { return localStorage.getItem('lms_token'); } catch { return null; }
 }
 export function setToken(t: string | null) {
-  try { t ? localStorage.setItem('lms_token', t) : localStorage.removeItem('lms_token'); } catch { /* ignore */ }
+  // Хранилище может быть недоступно: приватное окно, запрет на данные сайта.
+  // Тогда вход просто не переживёт перезагрузку страницы — это не повод падать.
+  try {
+    if (t) localStorage.setItem('lms_token', t);
+    else localStorage.removeItem('lms_token');
+  } catch { /* хранилище недоступно — работаем без него */ }
 }
 
 export async function api<T = any>(

@@ -40,7 +40,7 @@ async function main() {
   // ---------- справочник точек ----------
   const locs = (await j('/locations', { h: hrH })).d.items;
   check('точки заведены', locs.length >= 3, locs.map((l: any) => l.name).join(', '));
-  const [A, Bl, C] = locs;
+  const [A, Bl] = locs;
 
   // Состав сети меняет администратор: на точку завязаны снимки, содержание
   // уроков и аналитика, и это не та правка, которую делают между делом.

@@ -284,8 +284,6 @@ export default async function catalogRoutes(app: FastifyInstance) {
   });
 
   app.delete('/lessons/:id', async (req) => {
-    const l = one<any>('SELECT l.*, b.trajectory_id tid FROM lessons l JOIN blocks b ON b.id = l.block_id WHERE l.id = ?',
-      (req.params as any).id);
     run('DELETE FROM lessons WHERE id = ?', (req.params as any).id);
     return { ok: true };
   });

@@ -204,7 +204,9 @@ export function extractText(file: Buffer): ExtractResult {
   } catch {
     s = new TextDecoder('windows-1251').decode(file);
   }
-  const text = s.replace(/^﻿/, '').replace(/\r\n?/g, '\n').trim();
+  // Метку порядка байтов записываем кодом, а не самим символом: в исходнике
+  // он невидим, и такую строку невозможно прочитать глазами.
+  const text = s.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
   return { text, headings: headingsOf(text), kind: 'text' };
 }
 

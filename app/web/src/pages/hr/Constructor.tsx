@@ -15,7 +15,6 @@ export function Constructor() {
   const { positionId } = useParams();
   const nav = useNavigate();
   const { bump, n } = useBump();
-  const toast = useToast();
   const { data: pl, loading, error, reload } = useAsync(() => get<{ items: Pos[] }>('/positions'), []);
 
   useEffect(() => {

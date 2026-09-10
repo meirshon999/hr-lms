@@ -1,0 +1,6 @@
+dist/
+node_modules/
+web/public/
+*.db
+*.db-shm
+*.db-wal

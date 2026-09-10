@@ -81,19 +81,22 @@ LMS_AI_MODEL=claude-sonnet-5      # по умолчанию; Opus задаётс
 ## Проверка
 
 ```
-cd app/server
-npx tsx scripts/e2e-locations.ts     # точки, ИИН, содержимое по точкам, перевод
-npx tsx scripts/e2e-guards.ts        # защита от тупиков в онбординге
-npx tsx scripts/e2e-snapshot.ts      # изоляция снимком от правок каталога
-npx tsx scripts/e2e-check.ts         # сквозной путь сотрудника
-npx tsx scripts/e2e-hr-actions.ts    # действия HR над карточкой
-npx tsx scripts/e2e-builder.ts       # конструктор контента
-npx tsx scripts/e2e-files.ts         # загрузка материалов
-npx tsx scripts/e2e-ai.ts            # ИИ-конструктор: слоты, применение черновика
-cd .. && node audit-ui.mjs           # все экраны всех ролей в реальном браузере
+cd app
+npm run check        # всё сразу: типы, линтер и девять сквозных наборов
+
+npm run typecheck    # tsc по серверу, его проверкам и фронту
+npm run lint         # eslint по серверу и фронту
+npm test             # сквозные наборы: сервер поднимается сам, база — временная
+node audit-ui.mjs    # все экраны всех ролей в реальном браузере
 ```
 
-Скриптам нужен живой сервер с `LMS_DEV_TOOLS=1`; адрес задаётся `LMS_URL`.
+Наборы поднимают собственный сервер на свободном порту с базой во временной
+папке, поэтому рабочие данные они не задевают. Отдельный набор запускается
+как `npx tsx scripts/e2e-locations.ts` при живом сервере с `LMS_DEV_TOOLS=1`;
+адрес задаётся `LMS_URL`.
+
+`npm run format` применит prettier ко всему коду. Сейчас код им не
+переформатирован намеренно — почему, написано в `CLAUDE.md`.
 
 ## Документация
 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { all, db, migrate, one, run, uuid, wipe } from './db.ts';
+import { migrate, one, run, uuid, wipe } from './db.ts';
 import { hashPassword } from './auth.ts';
 import { stamp, today } from './clock.ts';
 import { markLessonPassedIfReady, takePreSnapshot, tryOpenOnboarding } from './domain.ts';

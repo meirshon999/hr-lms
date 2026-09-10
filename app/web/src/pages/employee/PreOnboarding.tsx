@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get, post } from '../../api';
 import { useAuth } from '../../auth';
@@ -30,10 +30,14 @@ export function PreOnboarding() {
   // Материалы пройдены — ждём кнопку HR. Экран должен обновиться сам, без перезахода:
   // как только стажировка отмечена, EmployeeHome покажет траекторию.
   const waiting = !!data?.done;
+  // refresh пересоздаётся на каждом рендере. Через ссылку опрос всегда зовёт
+  // свежую версию, а таймер не перезапускается по десять раз в минуту.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   useEffect(() => {
     if (!waiting) return;
-    const t = setInterval(() => { refresh(); }, 10_000);
-    const onFocus = () => refresh();
+    const t = setInterval(() => { refreshRef.current(); }, 10_000);
+    const onFocus = () => refreshRef.current();
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(t); window.removeEventListener('focus', onFocus); };
   }, [waiting]);
