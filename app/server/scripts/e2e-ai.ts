@@ -58,6 +58,15 @@ async function main() {
       method: 'POST', h, body: { source_text: 'x'.repeat(300) },
     });
     check('выключенный ИИ отвечает 503, а не падает', off.s === 503, off.d?.error?.message ?? '');
+  } else {
+    // Длину исходник проходит, а содержания в нём нет. Раньше модель послушно
+    // собирала урок из «BBBB…», и его можно было нажатием отправить в каталог.
+    const junk = await j(`/ai/lessons/${shared.id}/draft`, {
+      method: 'POST', h, body: { source_text: 'приветфыв\n' + 'B'.repeat(220) },
+    });
+    check('бессмысленный исходник отклоняется до обращения к модели',
+      junk.s === 422 && junk.d?.error?.code === 'source_not_meaningful',
+      `${junk.s} ${junk.d?.error?.code ?? ''}`);
   }
 
   // ---------- разбор слота работает так же, как в ручном конструкторе ----------

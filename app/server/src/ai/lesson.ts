@@ -107,6 +107,16 @@ export async function buildLessonDraft(source: string, ctx: DraftContext) {
   if (text.length < 200) {
     throw new AiError('Исходник слишком короткий — из него не выйдет урока', 'source_too_short');
   }
+  // Длина ничего не доказывает: строка из двухсот одинаковых букв её проходит,
+  // а модель послушно соберёт из неё урок, и HR получит бессмыслицу, которую
+  // ещё и можно нажатием отправить в каталог. Поэтому смотрим на слова.
+  const words = text.match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+  if (words.length < 20 || new Set(words.map((w) => w.toLowerCase())).size < 12) {
+    throw new AiError(
+      'В тексте нет связного содержания — вставьте настоящий регламент',
+      'source_not_meaningful',
+    );
+  }
   if (text.length > AI_MAX_SOURCE_CHARS) {
     throw new AiError(
       `Исходник длиннее ${AI_MAX_SOURCE_CHARS} символов. Разбейте его на части — ` +

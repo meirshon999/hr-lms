@@ -71,7 +71,12 @@ export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b';
 export const GROQ_BASE_URL = process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1';
 
 export const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? '').trim();
-export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-opus-5';
+/**
+ * По умолчанию Sonnet, а не Opus: уроки он собирает не хуже, а платить за
+ * каталог из полусотни уроков придётся заметно меньше. Нужен Opus — задайте
+ * `LMS_AI_MODEL=claude-opus-5`.
+ */
+export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-sonnet-5';
 
 /**
  * Провайдер можно назвать явно, но если не назвали — выводим из того, какой ключ

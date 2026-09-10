@@ -101,9 +101,15 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
   // Схему навязываем самой платформе. Без этого модель придумывает свои имена
   // полей: на настоящем регламенте она вернула «content» вместо «material»
   // и добавила поле, которого в форме нет.
-  const body = {
+  // Рассуждающие модели тратят часть ответа на размышления вслух, и они идут
+  // в тот же лимит, что и сам ответ. На длинном регламенте размышления съедали
+  // весь запас, ответ приходил пустым, и Groq отвечал 400 «не удалось проверить
+  // JSON» с пустым текстом. Отсюда две меры: просим думать коротко — замерено,
+  // размышления падают с 1600 символов до 120, а сам урок выходит полнее —
+  // и держим запас вдвое больше прежнего.
+  const body: Record<string, unknown> = {
     model: GROQ_MODEL,
-    max_tokens: req.maxTokens ?? 8000,
+    max_tokens: req.maxTokens ?? 16000,
     temperature: 0.3,
     response_format: {
       type: 'json_schema',
@@ -114,6 +120,8 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
       { role: 'user', content: req.user },
     ],
   };
+  // Настройку понимают только модели gpt-oss; остальные на неё ругаются.
+  if (GROQ_MODEL.includes('gpt-oss')) body.reasoning_effort = 'low';
 
   let res: Response;
   try {
@@ -137,13 +145,30 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
     throw new AiError('Бесплатный лимит Groq исчерпан — попробуйте позже', 'ai_rate_limited');
   }
   if (!res.ok) {
+    // Ответ провайдера — английский JSON про схемы и токены. HR он ничего
+    // не объясняет и только пугает, поэтому подробности уходят в журнал
+    // сервера, а человеку достаётся понятная фраза.
     const detail = await res.text().catch(() => '');
-    throw new AiError(`Groq ответил ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
+    console.error(`[ai] Groq ${res.status}: ${detail.slice(0, 500)}`);
+    // Модель не уложилась в форму — то же самое, что ответ, не прошедший схему,
+    // и лечится тем же повтором.
+    if (detail.includes('json_validate_failed')) {
+      throw new AiError(
+        'Модель не смогла собрать урок из этого текста — попробуйте ещё раз '
+        + 'или дайте более подробный исходник',
+        'ai_bad_shape',
+      );
+    }
+    throw new AiError(`Groq ответил ошибкой ${res.status} — подробности в журнале сервера`);
   }
 
   const json: any = await res.json();
   const text = json?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') throw new AiError('Пустой ответ модели');
+  // Пустой ответ — не поломка связи, а неудачная попытка: даём ей второй шанс.
+  if (typeof text !== 'string' || !text.trim()) {
+    console.error('[ai] пустой ответ, finish_reason:', json?.choices?.[0]?.finish_reason);
+    throw new AiError('Модель вернула пустой ответ — попробуйте ещё раз', 'ai_bad_shape');
+  }
 
   let raw: unknown;
   try {
