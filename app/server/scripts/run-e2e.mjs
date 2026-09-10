@@ -19,6 +19,7 @@ const SUITES = [
   ['e2e-snapshot', 'заморозка траектории'],
   ['e2e-ai', 'ИИ-конструктор и разбор документов'],
   ['e2e-users', 'роли и служебные аккаунты'],
+  ['e2e-funnel', 'воронка по должностям'],
 ];
 
 const PORT = Number(process.env.LMS_TEST_PORT ?? 3999);

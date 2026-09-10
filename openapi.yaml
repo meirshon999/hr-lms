@@ -929,6 +929,11 @@ paths:
     get:
       tags: [analytics]
       summary: Сводка по онбордингу
+      parameters:
+        - name: location
+          in: query
+          description: Разрез воронки по одной точке. Остальные цифры — по всей сети.
+          schema: { type: string }
       responses:
         "200":
           content:
@@ -942,15 +947,29 @@ paths:
                   avg_onboarding_days: { type: [number, "null"] }
                   funnel:
                     type: array
+                    description: >
+                      Ступени: принят → начал обучение → блоки по порядку → аттестация.
+                      На каждой три числа: дошли за всё время, стоят сейчас, ушли (архив).
+                      applicable — скольких людей ступень вообще касается: блок, которого
+                      нет у точки, считается только по тем, у кого он есть в снимке.
                     items:
                       type: object
                       properties:
+                        position_id: { type: string }
                         position: { type: string }
-                        cohort: { type: integer }
-                        attested: { type: integer }
-                        blocks:
+                        cohort: { type: integer, description: все заведённые на должность, включая архив }
+                        steps:
                           type: array
-                          items: { type: object, properties: { title: { type: string }, passed: { type: integer } } }
+                          items:
+                            type: object
+                            properties:
+                              key: { type: string, description: "hired | started | block:<id> | attested" }
+                              title: { type: string }
+                              applicable: { type: integer }
+                              reached: { type: integer }
+                              now: { type: integer }
+                              lost: { type: integer }
+                              avg_days: { type: [number, "null"] }
 
   # ---------------- dev (только прототип) ----------------
   /dev/clock:

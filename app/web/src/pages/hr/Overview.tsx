@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { get } from '../../api';
 import { useAsync, Loader, ErrorBox, STAGE_LABEL } from '../../lib';
 
@@ -12,11 +13,23 @@ interface Analytics {
     completion_pct: number | null; avg_onboarding_days: number | null;
   }[];
   hardest: { title: string; attempts: number; fail_pct: number }[];
-  funnel: { position: string; cohort: number; attested: number; blocks: { title: string; passed: number }[] }[];
+  funnel: {
+    position_id: string; position: string; cohort: number;
+    steps: {
+      key: string; title: string;
+      applicable: number; reached: number; now: number; lost: number;
+      avg_days: number | null;
+    }[];
+  }[];
 }
 
+interface Loc { id: string; name: string }
+
 export function Overview() {
-  const { data, loading, error, reload } = useAsync(() => get<Analytics>('/analytics'), []);
+  const [loc, setLoc] = useState('');
+  const { data, loading, error, reload } = useAsync(
+    () => get<Analytics>(`/analytics${loc ? `?location=${loc}` : ''}`), [loc]);
+  const { data: locs } = useAsync(() => get<{ items: Loc[] }>('/locations'), []);
 
   return (
     <>
@@ -105,41 +118,63 @@ export function Overview() {
             </>
           )}
 
-          <h3 style={{ marginBottom: 10 }}>Воронка по должностям</h3>
+          <div className="row-between" style={{ marginBottom: 10, alignItems: "baseline", gap: 10 }}>
+            <h3 style={{ margin: 0 }}>Воронка по должностям</h3>
+            <select value={loc} onChange={(e) => setLoc(e.target.value)} style={{ maxWidth: 260 }}>
+              <option value="">Вся сеть</option>
+              {locs?.items.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: -4, marginBottom: 10 }}>
+            На каждой ступени: <b>дошли</b> за всё время, <b>сейчас</b> стоят на ней,
+            <b> ушли</b> — те, кто на ней и закончился.
+          </p>
+
           {data.funnel.length === 0 && (
-            <div className="panel muted">Пока никто не дошёл до онбординга.</div>
+            <div className="panel muted">На эти должности ещё никого не заводили.</div>
           )}
-          {data.funnel.map((f) => {
-            const max = Math.max(f.cohort, 1);
-            return (
-              <div key={f.position} className="panel">
-                <div className="row-between" style={{ marginBottom: 10 }}>
-                  <b>{f.position}</b>
-                  <span className="muted" style={{ fontSize: 13 }}>
-                    в когорте {f.cohort} · завершили {f.attested}
-                  </span>
-                </div>
-                {f.blocks.map((b) => (
-                  <div key={b.title} style={{ marginBottom: 8 }}>
-                    <div className="row-between" style={{ fontSize: 13, marginBottom: 3 }}>
-                      <span>{b.title}</span>
-                      <span className="muted">{b.passed} из {f.cohort}</span>
-                    </div>
-                    <div className="progress"><i style={{ width: `${(b.passed / max) * 100}%` }} /></div>
-                  </div>
-                ))}
-                <div style={{ marginTop: 8 }}>
-                  <div className="row-between" style={{ fontSize: 13, marginBottom: 3 }}>
-                    <span>Аттестация пройдена</span>
-                    <span className="muted">{f.attested} из {f.cohort}</span>
-                  </div>
-                  <div className="progress over" style={{ background: '#efe7dc' }}>
-                    <i style={{ width: `${(f.attested / max) * 100}%`, background: 'var(--success)' }} />
-                  </div>
-                </div>
+
+          {data.funnel.map((f) => (
+            <div key={f.position_id} className="panel">
+              <div className="row-between" style={{ marginBottom: 12 }}>
+                <b>{f.position}</b>
+                <span className="muted" style={{ fontSize: 13 }}>всего заведено {f.cohort}</span>
               </div>
-            );
-          })}
+
+              {f.steps.map((st) => {
+                // Полоса считается от применимых, а не от всей когорты: блок,
+                // которого нет у части точек, иначе выглядел бы провалом.
+                const base = Math.max(st.applicable, 1);
+                return (
+                  <div key={st.key} style={{ marginBottom: 10 }}>
+                    <div className="row-between" style={{ fontSize: 13, marginBottom: 3, gap: 10 }}>
+                      <span>
+                        {st.title}
+                        {st.applicable < f.cohort && (
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            {" "}· есть у {st.applicable} из {f.cohort}
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                        <b>{st.reached}</b>
+                        <span className="muted"> из {st.applicable}</span>
+                        {st.now > 0 && <span className="muted"> · сейчас {st.now}</span>}
+                        {st.lost > 0 && <span style={{ color: "var(--error)" }}> · ушли {st.lost}</span>}
+                        {st.avg_days !== null && <span className="muted"> · {st.avg_days} дн.</span>}
+                      </span>
+                    </div>
+                    <div className="progress">
+                      <i style={{
+                        width: `${Math.round((st.reached / base) * 100)}%`,
+                        background: st.key === "attested" ? "var(--success)" : undefined,
+                      }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </>
       )}
     </>

@@ -82,7 +82,7 @@ LMS_AI_MODEL=claude-sonnet-5      # по умолчанию; Opus задаётс
 
 ```
 cd app
-npm run check        # всё сразу: типы, линтер и девять сквозных наборов
+npm run check        # всё сразу: типы, линтер и десять сквозных наборов
 
 npm run typecheck    # tsc по серверу, его проверкам и фронту
 npm run lint         # eslint по серверу и фронту

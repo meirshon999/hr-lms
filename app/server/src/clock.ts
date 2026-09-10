@@ -54,3 +54,12 @@ export const isAfter = (date1: string, date2: string) => date1 > date2;
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86_400_000);
 }
+
+/**
+ * То же, но для отметок времени из `stamp()` — со временем суток.
+ * Отдельная функция намеренно: `daysBetween` дописывает к строке `T00:00:00Z`
+ * и на полной отметке времени вернула бы не число, а тишину в виде NaN.
+ */
+export function daysBetweenStamps(from: string, to: string): number {
+  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000);
+}
