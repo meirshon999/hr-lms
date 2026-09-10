@@ -40,6 +40,14 @@ export interface AiRequest<T> {
   user: string;
   /** Форма ответа. Она же проверка: не подошло — считаем, что модель не справилась. */
   schema: ZodType<T>;
+  /**
+   * Та же форма как JSON Schema. У Claude схему навязывает SDK, у Groq —
+   * response_format. Без неё модель придумывает свои имена полей: на этом
+   * регламенте она вернула «content» вместо «material» и лишнее поле сверху.
+   */
+  jsonSchema: Record<string, unknown>;
+  /** Пояснения, которые схемой не выразить: сколько вопросов, сколько вариантов. */
+  shape: string;
   maxTokens?: number;
 }
 
@@ -52,8 +60,17 @@ export interface AiResult<T> {
 export async function generateJson<T>(req: AiRequest<T>): Promise<AiResult<T>> {
   const reason = aiUnavailableReason();
   if (reason) throw new AiError(reason, 'ai_disabled');
+  if (AI_PROVIDER === 'anthropic') return viaAnthropic(req);
 
-  return AI_PROVIDER === 'anthropic' ? viaAnthropic(req) : viaGroq(req);
+  // Имена полей платформа гарантирует, а «не меньше трёх вопросов» — нет: это
+  // ограничение проверяет наша схема. Разовый недобор лечится повтором дешевле,
+  // чем показом ошибки человеку, который ни в чём не виноват.
+  try {
+    return await viaGroq(req);
+  } catch (e) {
+    if (e instanceof AiError && e.code === 'ai_bad_shape') return viaGroq(req);
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------- Claude
@@ -68,7 +85,10 @@ async function viaAnthropic<T>(req: AiRequest<T>): Promise<AiResult<T>> {
     model: ANTHROPIC_MODEL,
     max_tokens: req.maxTokens ?? 16000,
     system: req.system,
-    messages: [{ role: 'user', content: req.user }],
+    messages: [{ role: 'user', content: `${req.user}
+
+Форма ответа:
+${req.shape}` }],
     output_config: { format: zodOutputFormat(req.schema as any) },
   });
 
@@ -80,15 +100,19 @@ async function viaAnthropic<T>(req: AiRequest<T>): Promise<AiResult<T>> {
 // ------------------------------------------------------------------ Groq
 
 async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
-  // Формат OpenAI: у Groq режим JSON включается response_format, но саму форму
-  // он не гарантирует — поэтому и описываем её словами, и проверяем схемой ниже.
+  // Схему навязываем самой платформе. Без этого модель придумывает свои имена
+  // полей: на настоящем регламенте она вернула «content» вместо «material»
+  // и добавила поле, которого в форме нет.
   const body = {
     model: GROQ_MODEL,
     max_tokens: req.maxTokens ?? 8000,
     temperature: 0.3,
-    response_format: { type: 'json_object' },
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'result', strict: true, schema: req.jsonSchema },
+    },
     messages: [
-      { role: 'system', content: req.system + '\n\nОтвечай только объектом JSON, без пояснений вокруг.' },
+      { role: 'system', content: `${req.system}\n\n${req.shape}` },
       { role: 'user', content: req.user },
     ],
   };
@@ -132,7 +156,12 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
 
   const parsed = req.schema.safeParse(raw);
   if (!parsed.success) {
-    throw new AiError('Модель вернула ответ не той формы — попробуйте ещё раз');
+    // HR это чинить не может, а тому, кто настраивает сервер, нужна причина:
+    // «не та форма» без подробностей отлаживается вслепую.
+    console.error('[ai] ответ не прошёл схему:',
+      JSON.stringify(parsed.error.issues.slice(0, 5)));
+    console.error('[ai] начало ответа:', JSON.stringify(raw).slice(0, 500));
+    throw new AiError('Модель вернула ответ не той формы — попробуйте ещё раз', 'ai_bad_shape');
   }
   return { data: parsed.data, provider: 'groq', model: GROQ_MODEL };
 }

@@ -69,7 +69,7 @@ export const AI_PROVIDER = ((): AiProvider => {
 
 export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
 /** Названия моделей у Groq меняются — держим в переменной, а не в коде. */
-export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile';
+export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b';
 export const GROQ_BASE_URL = process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1';
 
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';

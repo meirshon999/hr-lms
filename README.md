@@ -41,6 +41,7 @@ HR вставляет регламент — модель возвращает �
 # бесплатно, для разработки и показа
 LMS_AI_PROVIDER=groq
 GROQ_API_KEY=gsk_...
+GROQ_MODEL=openai/gpt-oss-120b   # набор моделей у Groq меняется
 
 # платно, когда нужно качество и никаких лимитов
 LMS_AI_PROVIDER=anthropic

@@ -28,6 +28,36 @@ export const DraftSchema = z.object({
 
 export type LessonDraft = z.infer<typeof DraftSchema>;
 
+/** Та же форма как JSON Schema — её навязываем провайдеру, который это умеет. */
+const DRAFT_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'material', 'questions'],
+  properties: {
+    title: { type: 'string' },
+    material: { type: 'string' },
+    questions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text', 'options', 'correct_index'],
+        properties: {
+          text: { type: 'string' },
+          options: { type: 'array', items: { type: 'string' } },
+          correct_index: { type: 'integer' },
+        },
+      },
+    },
+  },
+};
+
+/** Чего схемой не выразить: количества. Их проверяет уже наша сторона. */
+const SHAPE = `Вопросов должно быть не меньше 3 и не больше 10.
+У каждого вопроса от 3 до 5 вариантов.
+correct_index — номер верного варианта, считая с нуля.
+material — цельный текст урока, не короче нескольких абзацев.`;
+
 const SYSTEM = `Ты методист сети ресторанов Pingwin Premium. Ты превращаешь внутренние
 регламенты в уроки для новых сотрудников.
 
@@ -98,6 +128,8 @@ export async function buildLessonDraft(source: string, ctx: DraftContext) {
       'Заголовок оставь близким к названию урока.\n\n' +
       `--- РЕГЛАМЕНТ ---\n${text}\n--- КОНЕЦ ---`,
     schema: DraftSchema,
+    shape: SHAPE,
+    jsonSchema: DRAFT_JSON_SCHEMA,
   });
 
   // Проверка формы уже прошла в слое провайдера, но верный ответ мог указать
