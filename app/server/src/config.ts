@@ -63,12 +63,14 @@ export const CORS_ORIGINS = (process.env.LMS_ORIGINS ?? '')
  */
 export type AiProvider = 'off' | 'groq' | 'anthropic';
 
-export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
+// trim: ключ почти всегда попадает сюда вставкой из буфера, и лишний перевод
+// строки на конце превращает рабочий ключ в 401 без единой подсказки почему.
+export const GROQ_API_KEY = (process.env.GROQ_API_KEY ?? '').trim();
 /** Названия моделей у Groq меняются — держим в переменной, а не в коде. */
 export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b';
 export const GROQ_BASE_URL = process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1';
 
-export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
+export const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? '').trim();
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-opus-5';
 
 /**

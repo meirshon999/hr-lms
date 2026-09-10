@@ -7,7 +7,10 @@ import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import { CORS_ORIGINS, DEV_TOOLS, IS_PROD, MAX_UPLOAD_MB, PORT } from './config.ts';
+import {
+  AI_PROVIDER, CORS_ORIGINS, DEV_TOOLS, GROQ_MODEL, IS_PROD,
+  MAX_UPLOAD_MB, PORT, STT_PROVIDER,
+} from './config.ts';
 import { migrate, one } from './db.ts';
 import { seed } from './seed.ts';
 import { err } from './auth.ts';
@@ -92,3 +95,8 @@ if (existsSync(join(webDist, 'index.html'))) {
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
 console.log(`  LMS на порту ${PORT}`);
+// Состояние ИИ — в журнал запуска. Иначе «почему нет кнопок» выясняется только
+// входом в систему, а на чужом сервере журнал — единственное, что видно.
+console.log(AI_PROVIDER === 'off'
+  ? '  ИИ выключен: не задан ни GROQ_API_KEY, ни ANTHROPIC_API_KEY'
+  : `  ИИ: ${AI_PROVIDER} / ${GROQ_MODEL}, речь: ${STT_PROVIDER}`);
