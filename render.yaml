@@ -7,7 +7,9 @@ services:
     runtime: node
     plan: free
     rootDir: app
-    buildCommand: npm install && npm run build
+    # --include=dev обязателен: NODE_ENV=production заставляет npm пропускать
+    # devDependencies, а tsc и vite лежат именно там — без них сборки нет.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
