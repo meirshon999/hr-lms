@@ -36,6 +36,7 @@ export const ACTION_LABEL: Record<string, string> = {
   invite: 'Показал ссылку-приглашение',
   upload_file: 'Загрузил файл',
   location_add: 'Добавил точку',
+  ai_apply: 'Подтвердил урок, собранный ИИ',
   publish: 'Опубликовал траекторию',
   unpublish: 'Снял траекторию с публикации',
 };

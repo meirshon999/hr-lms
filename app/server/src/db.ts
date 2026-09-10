@@ -191,6 +191,21 @@ CREATE TABLE IF NOT EXISTS files (
   created_at  TEXT NOT NULL
 );
 
+-- Черновик урока, собранный ИИ. Лежит отдельно от каталога: пока HR его не
+-- подтвердил, ни один сотрудник его не видит (C-13).
+CREATE TABLE IF NOT EXISTS ai_drafts (
+  id          TEXT PRIMARY KEY,
+  lesson_id   TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  location_id TEXT NOT NULL DEFAULT '*',
+  source_text TEXT NOT NULL,
+  draft_json  TEXT NOT NULL,
+  provider    TEXT NOT NULL,
+  model       TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  UNIQUE (lesson_id, location_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   ts          TEXT NOT NULL,
@@ -238,7 +253,7 @@ export function migrate() {
 /** Полный сброс: удаляет все данные (только тестовый сервер). */
 export function wipe() {
   const tables = [
-    'audit_log', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
+    'audit_log', 'ai_drafts', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lesson_locations', 'lessons', 'blocks',
     'pre_onboarding_items', 'trajectories', 'positions', 'locations', 'users',
     'app_state', 'files',

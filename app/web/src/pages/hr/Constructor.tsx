@@ -7,6 +7,7 @@ import { FilePicker } from '../../components/FilePicker';
 import { MaterialForm } from '../../components/MaterialForm';
 import { TestEditor } from '../../components/TestEditor';
 import { ConstructorPreview } from '../../components/ConstructorPreview';
+import { AiLessonDialog } from '../../components/AiLessonDialog';
 
 interface Pos { id: string; name: string; trajectory_status: string; }
 
@@ -65,6 +66,7 @@ interface Traj {
   blocks: any[];
 }
 interface Loc { id: string; name: string; city: string | null; }
+interface AiStatus { enabled: boolean; provider: string; model: string | null; reason: string | null }
 
 function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChange: () => void }) {
   const toast = useToast();
@@ -73,6 +75,8 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
   // выглядят одинаково на любой, а точечные показывают вариант выбранной.
   const [at, setAt] = useState('');
   const { data: locs } = useAsync(() => get<{ items: Loc[] }>('/locations'), []);
+  // Кнопки ИИ показываем только там, где их есть чем обслужить.
+  const { data: ai } = useAsync(() => get<AiStatus>('/ai/status'), []);
 
   useEffect(() => {
     if (!at && locs?.items.length) setAt(locs.items[0].id);
@@ -222,6 +226,7 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
           <div className="body">
             {b.lessons.map((l: any, li: number) => (
               <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
+                ai={!!ai?.enabled}
                 i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
             ))}
             <InlineAdd placeholder="Название урока" label="+ урок"
@@ -250,11 +255,12 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
   );
 }
 
-function LessonEditor({ lesson, onChange, i, count, onMove, at, locations }: {
+function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai }: {
   lesson: any; onChange: () => void; i: number; count: number; onMove: (dir: -1 | 1) => void;
-  at: string; locations: Loc[];
+  at: string; locations: Loc[]; ai: boolean;
 }) {
   const [tab, setTab] = useState<'material' | 'test' | 'scope' | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
   const hasMat = lesson.material && (lesson.material.text_body || lesson.material.file_url);
   const hasTest = lesson.test && lesson.test.questions.length > 0;
   // У точечного урока материал и тест заводятся под выбранную точку,
@@ -279,7 +285,23 @@ function LessonEditor({ lesson, onChange, i, count, onMove, at, locations }: {
         <button className="btn ghost sm" onClick={() => setTab(tab === 'material' ? null : 'material')}>Материал</button>
         <button className="btn ghost sm" onClick={() => setTab(tab === 'test' ? null : 'test')}>Тест</button>
         <button className="btn ghost sm" onClick={() => setTab(tab === 'scope' ? null : 'scope')}>Где и чьё</button>
+        {ai && (
+          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setAiOpen(true)}>
+            Собрать ИИ
+          </button>
+        )}
       </div>
+
+      {aiOpen && (
+        <AiLessonDialog
+          lessonId={lesson.id}
+          lessonTitle={lesson.title}
+          locationId={slot}
+          locationName={slot ? here : undefined}
+          onClose={() => setAiOpen(false)}
+          onApplied={() => { setAiOpen(false); onChange(); }}
+        />
+      )}
 
       {tab === 'scope' && <LessonScope lesson={lesson} locations={locations} onChange={onChange} />}
       {lesson.content_per_location && (tab === 'material' || tab === 'test') && (

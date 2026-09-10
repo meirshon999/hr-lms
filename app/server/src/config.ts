@@ -53,6 +53,34 @@ export const TOKEN_TTL_HOURS = 12;
 export const CORS_ORIGINS = (process.env.LMS_ORIGINS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
+/**
+ * ИИ-конструктор. Провайдер переключается одной переменной, потому что смена
+ * «бесплатно → платно» не должна означать правку кода.
+ *
+ *   off       — функции нет: кнопки не появляются, адреса отвечают 503
+ *   groq      — бесплатный тариф, формат OpenAI, модели Llama
+ *   anthropic — Claude: платно, но читает PDF и картинки без сторонних библиотек
+ */
+export type AiProvider = 'off' | 'groq' | 'anthropic';
+export const AI_PROVIDER = ((): AiProvider => {
+  const v = (process.env.LMS_AI_PROVIDER ?? 'off').toLowerCase();
+  return v === 'groq' || v === 'anthropic' ? v : 'off';
+})();
+
+export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
+/** Названия моделей у Groq меняются — держим в переменной, а не в коде. */
+export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile';
+export const GROQ_BASE_URL = process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1';
+
+export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
+export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-opus-5';
+
+/**
+ * Предел исходника на один разбор. Ограничивает и счёт, и время ответа:
+ * стостраничный документ модель будет жевать минуту, а HR будет смотреть в экран.
+ */
+export const AI_MAX_SOURCE_CHARS = Number(process.env.LMS_AI_MAX_CHARS ?? 40000);
+
 /** Насколько в прошлом допустима дата выхода (SPEC §8 max_backdate_days). */
 export const MAX_BACKDATE_DAYS = 30;
 

@@ -4,6 +4,7 @@ import { all, one, run, SHARED, uuid } from '../db.ts';
 import { authRequired, err } from '../auth.ts';
 import { trajectoryOfPosition, tryOpenOnboarding } from '../domain.ts';
 import { readinessByLocation, structureProblems } from '../readiness.ts';
+import { contentSlot } from '../content.ts';
 import { audit } from '../audit.ts';
 import { emit } from '../events.ts';
 import { positionDto, trajectoryTree } from '../serializers.ts';
@@ -243,25 +244,6 @@ export default async function catalogRoutes(app: FastifyInstance) {
       run('INSERT INTO lesson_locations (lesson_id, location_id) VALUES (?,?)', lessonId, locId);
     }
   }
-
-  /**
-   * Куда класть материал или тест: в общий вариант или в вариант точки.
-   * Смешивать нельзя — иначе у урока «свой на каждой точке» тихо появится общий
-   * материал, который будет подставляться там, где точка ещё не заполнила своё.
-   */
-  function contentSlot(lessonId: string, wanted: string | undefined): { location: string } | { error: string } {
-    const l = one<any>('SELECT * FROM lessons WHERE id = ?', lessonId);
-    if (!l) return { error: 'Урок не найден' };
-    const location = wanted ?? SHARED;
-    if (l.content_per_location && location === SHARED)
-      return { error: 'У этого урока содержимое своё на каждой точке — выберите точку' };
-    if (!l.content_per_location && location !== SHARED)
-      return { error: 'У этого урока содержимое общее на всю сеть — точку выбирать не нужно' };
-    if (location !== SHARED && !one('SELECT 1 FROM locations WHERE id = ?', location))
-      return { error: 'Точка не найдена' };
-    return { location };
-  }
-
 
   app.post('/blocks/:id/lessons', async (req, reply) => {
     const b = one<any>('SELECT * FROM blocks WHERE id = ?', (req.params as any).id);
