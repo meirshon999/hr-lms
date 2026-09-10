@@ -183,8 +183,10 @@ async function main() {
   check('блок точки А не считает чужих дошедшими', onlyA.reached === 1,
     `дошли ${onlyA.reached} из ${onlyA.applicable}`);
 
-  check('срок ступени считается в днях, а не в пустоте',
-    started.avg_days === null || typeof started.avg_days === 'number', String(started.avg_days));
+  // У первой ступени срок — ожидание между наймом и стартом обучения.
+  // Раньше здесь стоял ноль: считали от старта до старта.
+  check('срок первой ступени — это ожидание, а не ноль по построению',
+    typeof started.avg_days === 'number', String(started.avg_days));
 
   // ---------- воронка по одной точке ----------
   const onlyBl = (await j(`/analytics?location=${Bl.id}`, { h })).d.funnel

@@ -28,7 +28,10 @@ export interface FunnelStep {
   reached: number;
   now: number;
   lost: number;
-  /** Средний срок от открытия онбординга до прохождения ступени, в днях. */
+  /**
+   * Средний срок ступени, в днях. У «начал обучение» — от найма до старта
+   * (сколько человек ждал), у остальных — от старта обучения до прохождения.
+   */
   avg_days: number | null;
 }
 
@@ -152,13 +155,17 @@ export function funnelByPosition(locationId?: string): PositionFunnel[] {
         : walked;
 
       // Срок — только у тех, кто ступень действительно прошёл, а не стоит на ней.
+      //
+      // Отсчёт у первой ступени свой. «Сколько дней от открытия онбординга до
+      // открытия онбординга» — это ноль, и он занимал место полезной цифры.
+      // Здесь важно другое: сколько человек ждал между наймом и началом
+      // обучения. Это ожидание отметки о стажировке, и оно у HR болит.
       const days: number[] = [];
       if (i >= 1) {
         for (const { e, w } of pool) {
           const at = w.doneAt[i];
-          if (w.step > i && at && e.onboarding_opened_at) {
-            days.push(daysBetweenStamps(e.onboarding_opened_at, at));
-          }
+          const from = i === 1 ? e.created_at : e.onboarding_opened_at;
+          if (w.step > i && at && from) days.push(daysBetweenStamps(from, at));
         }
       }
 
