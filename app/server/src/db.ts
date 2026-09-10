@@ -206,6 +206,28 @@ CREATE TABLE IF NOT EXISTS ai_drafts (
   UNIQUE (lesson_id, location_id)
 );
 
+-- План траектории, предложенный ИИ по документу. В каталог не смотрит:
+-- пока человек не нажмёт «Создать», это просто предложение (правило C-13).
+CREATE TABLE IF NOT EXISTS ai_plans (
+  id            TEXT PRIMARY KEY,
+  trajectory_id TEXT NOT NULL UNIQUE REFERENCES trajectories(id) ON DELETE CASCADE,
+  source_text   TEXT NOT NULL,
+  sections_json TEXT NOT NULL,
+  plan_json     TEXT NOT NULL,
+  provider      TEXT NOT NULL,
+  model         TEXT NOT NULL,
+  created_by    TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+
+-- Кусок исходника, из которого вырос урок. Нужен, чтобы кадровик не искал
+-- нужный абзац в сорокастраничном регламенте заново: открыл сборку урока —
+-- исходник уже в поле.
+CREATE TABLE IF NOT EXISTS ai_lesson_sources (
+  lesson_id   TEXT PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+  source_text TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   ts          TEXT NOT NULL,
@@ -253,7 +275,7 @@ export function migrate() {
 /** Полный сброс: удаляет все данные (только тестовый сервер). */
 export function wipe() {
   const tables = [
-    'audit_log', 'ai_drafts', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
+    'audit_log', 'ai_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lesson_locations', 'lessons', 'blocks',
     'pre_onboarding_items', 'trajectories', 'positions', 'locations', 'users',
     'app_state', 'files',

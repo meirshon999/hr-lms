@@ -8,6 +8,7 @@ import { MaterialForm } from '../../components/MaterialForm';
 import { TestEditor } from '../../components/TestEditor';
 import { ConstructorPreview } from '../../components/ConstructorPreview';
 import { AiLessonDialog } from '../../components/AiLessonDialog';
+import { AiPlanDialog } from '../../components/AiPlanDialog';
 
 interface Pos { id: string; name: string; trajectory_status: string; }
 
@@ -50,7 +51,14 @@ export function Constructor() {
             }} label="+ должность" />
           </div>
 
-          {positionId && <TrajectoryEditor key={positionId + n} positionId={positionId} onChange={bump} />}
+          {positionId && (
+            <TrajectoryEditor
+              key={positionId + n}
+              positionId={positionId}
+              positionName={pl.items.find((p) => p.id === positionId)?.name ?? 'должность'}
+              onChange={bump}
+            />
+          )}
         </div>
       )}
     </>
@@ -70,9 +78,12 @@ interface AiStatus {
   stt: { enabled: boolean; provider: string; model: string | null };
 }
 
-function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChange: () => void }) {
+function TrajectoryEditor({ positionId, positionName, onChange }: {
+  positionId: string; positionName: string; onChange: () => void;
+}) {
   const toast = useToast();
   const [preview, setPreview] = useState(false);
+  const [planning, setPlanning] = useState(false);
   // Точка, глазами которой HR смотрит траекторию. Уроки с общим содержимым
   // выглядят одинаково на любой, а точечные показывают вариант выбранной.
   const [at, setAt] = useState('');
@@ -129,6 +140,12 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {ai?.enabled && (
+            <button className="btn ghost sm" onClick={() => setPlanning(true)}
+              title="Загрузить регламент целиком и получить готовую структуру">
+              ✨ Собрать из документа
+            </button>
+          )}
           <button className="btn ghost sm" onClick={() => setPreview(true)}>Предпросмотр</button>
           {data.status === 'active'
             ? <button className="btn ghost sm" onClick={unpublish}>Снять с публикации</button>
@@ -165,6 +182,15 @@ function TrajectoryEditor({ positionId, onChange }: { positionId: string; onChan
           </p>
         )}
       </div>
+
+      {planning && (
+        <AiPlanDialog
+          positionId={positionId}
+          positionName={positionName}
+          onClose={() => setPlanning(false)}
+          onApplied={refresh}
+        />
+      )}
 
       {preview && <ConstructorPreview positionId={positionId} onClose={() => setPreview(false)} />}
 

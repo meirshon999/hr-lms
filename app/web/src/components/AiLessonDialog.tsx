@@ -51,7 +51,15 @@ export function AiLessonDialog({
       setDraft(r.draft);
       setSource(r.source_text);
       setMeta({ provider: r.provider, model: r.model });
-    }).catch(() => { /* черновика нет — обычное дело */ });
+    }).catch(() => {
+      // Черновика нет — обычное дело. Но если урок вырос из плана по документу,
+      // его кусок регламента уже сохранён: подставим, чтобы кадровик не искал
+      // нужный абзац в сорока страницах заново.
+      if (!live) return;
+      get<{ source_text: string }>(`/ai/lessons/${lessonId}/source`)
+        .then((r) => { if (live) setSource(r.source_text); })
+        .catch(() => { /* урок заводили руками — поле остаётся пустым */ });
+    });
     return () => { live = false; };
   }, [lessonId, q]);
 

@@ -10,6 +10,7 @@ import { sttInfo, transcribe } from '../ai/transcribe.ts';
 import { MAX_AUDIO_MB, MAX_DOC_MB } from '../config.ts';
 import { DocError, extractDocument } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
+import { buildTrajectoryPlan, PlanSchema, sourceFor, type Section } from '../ai/plan.ts';
 
 const actor = (req: any) => req?.user?.login ?? 'system';
 
@@ -107,6 +108,143 @@ export default async function aiRoutes(app: FastifyInstance) {
       app.log.error(e);
       return reply.code(500).send(err('doc_failed', 'Не удалось прочитать документ'));
     }
+  });
+
+  // ============================ ПЛАН ТРАЕКТОРИИ ============================
+  //
+  // Первый проход: документ → предложение структуры. В каталоге ничего
+  // не появляется, пока человек не нажмёт «Создать» — то же правило C-13,
+  // только про дерево целиком, а не про один урок.
+
+  const trajectoryOf = (positionId: string) =>
+    one<{ id: string; status: string }>(
+      'SELECT id, status FROM trajectories WHERE position_id = ?', positionId);
+
+  const planRow = (trajectoryId: string) =>
+    one<any>('SELECT * FROM ai_plans WHERE trajectory_id = ?', trajectoryId);
+
+  /** Наружу отдаём разделы без текста: он большой, а нужны заголовок и размер. */
+  const outline = (sections: Section[]) =>
+    sections.map((x) => ({ index: x.index, title: x.title, chars: x.chars }));
+
+  app.post('/ai/trajectories/:positionId/plan', async (req, reply) => {
+    const reason = aiUnavailableReason();
+    if (reason) return reply.code(503).send(err('ai_disabled', reason));
+
+    const traj = trajectoryOf((req.params as any).positionId);
+    if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
+
+    const p = z.object({ source_text: z.string() }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'Нужен текст документа'));
+
+    const pos = one<{ name: string }>(
+      'SELECT name FROM positions WHERE id = ?', (req.params as any).positionId);
+
+    try {
+      const r = await buildTrajectoryPlan(p.data.source_text, {
+        positionName: pos?.name ?? 'сотрудник',
+      });
+      run(
+        `INSERT INTO ai_plans (id, trajectory_id, source_text, sections_json, plan_json, provider, model, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(trajectory_id) DO UPDATE SET
+           source_text = excluded.source_text, sections_json = excluded.sections_json,
+           plan_json = excluded.plan_json, provider = excluded.provider,
+           model = excluded.model, created_by = excluded.created_by, created_at = excluded.created_at`,
+        uuid(), traj.id, p.data.source_text, JSON.stringify(r.sections),
+        JSON.stringify(r.data), r.provider, r.model, actor(req), stamp(),
+      );
+      return { plan: r.data, sections: outline(r.sections), provider: r.provider, model: r.model };
+    } catch (e) {
+      if (e instanceof AiError) {
+        const status = e.code === 'ai_rate_limited' ? 429
+          : e.code === 'ai_disabled' ? 503
+          : e.code.startsWith('source_') ? 422 : 502;
+        return reply.code(status).send(err(e.code, e.message));
+      }
+      app.log.error(e);
+      return reply.code(502).send(err('ai_failed', 'Не удалось разобрать документ — попробуйте ещё раз'));
+    }
+  });
+
+  app.get('/ai/trajectories/:positionId/plan', async (req, reply) => {
+    const traj = trajectoryOf((req.params as any).positionId);
+    const row = traj && planRow(traj.id);
+    if (!row) return reply.code(404).send(err('not_found', 'Плана нет'));
+    return {
+      plan: JSON.parse(row.plan_json),
+      sections: outline(JSON.parse(row.sections_json)),
+      provider: row.provider, model: row.model,
+      created_by: row.created_by, created_at: row.created_at,
+    };
+  });
+
+  app.delete('/ai/trajectories/:positionId/plan', async (req, reply) => {
+    const traj = trajectoryOf((req.params as any).positionId);
+    if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
+    run('DELETE FROM ai_plans WHERE trajectory_id = ?', traj.id);
+    return { ok: true };
+  });
+
+  /**
+   * Второй шаг: план становится каркасом. Блоки и уроки создаются пустыми —
+   * материал и тест собираются потом, по одному уроку, и каждый проходит
+   * через глаза кадровика.
+   *
+   * Кусок документа сохраняется рядом с уроком: иначе кадровику пришлось бы
+   * заново искать нужный абзац в сорокастраничном регламенте.
+   */
+  app.post('/ai/trajectories/:positionId/plan/apply', async (req, reply) => {
+    const traj = trajectoryOf((req.params as any).positionId);
+    if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
+
+    const row = planRow(traj.id);
+    if (!row) return reply.code(404).send(err('not_found', 'Сначала соберите план'));
+
+    // Человек мог править дерево, поэтому применяем то, что он прислал.
+    const p = z.object({ plan: PlanSchema }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'План не той формы'));
+
+    const sections: Section[] = JSON.parse(row.sections_json);
+    let blocks = 0;
+    let lessons = 0;
+
+    for (const b of p.data.plan.blocks) {
+      const blockId = uuid();
+      const maxRegular = one<{ n: number }>(
+        `SELECT COALESCE(MAX(ord),0) n FROM blocks WHERE trajectory_id = ? AND kind = 'regular'`,
+        traj.id)!.n;
+      run('INSERT INTO blocks (id, trajectory_id, ord, title, kind) VALUES (?,?,?,?,?)',
+        blockId, traj.id, maxRegular + 1, b.title, 'regular');
+      // Аттестация всегда последняя: новые блоки встают перед ней.
+      run(`UPDATE blocks SET ord = ? WHERE trajectory_id = ? AND kind = 'attestation'`,
+        maxRegular + 2, traj.id);
+      blocks++;
+
+      b.lessons.forEach((l, i) => {
+        const lessonId = uuid();
+        run('INSERT INTO lessons (id, block_id, ord, title, everywhere, content_per_location) VALUES (?,?,?,?,1,0)',
+          lessonId, blockId, i + 1, l.title);
+        const src = sourceFor(sections, l.sections);
+        if (src) {
+          run('INSERT OR REPLACE INTO ai_lesson_sources (lesson_id, source_text) VALUES (?,?)',
+            lessonId, src);
+        }
+        lessons++;
+      });
+    }
+
+    run('DELETE FROM ai_plans WHERE trajectory_id = ?', traj.id);
+    audit(actor(req), 'ai_plan_apply', null, blocks + ' блоков, ' + lessons + ' уроков');
+    return { blocks, lessons };
+  });
+
+  /** Кусок документа, из которого вырос урок: подставляется в поле сборки. */
+  app.get('/ai/lessons/:id/source', async (req, reply) => {
+    const row = one<{ source_text: string }>(
+      'SELECT source_text FROM ai_lesson_sources WHERE lesson_id = ?', (req.params as any).id);
+    if (!row) return reply.code(404).send(err('not_found', 'Исходника нет'));
+    return { source_text: row.source_text };
   });
 
   const draftRow = (lessonId: string, location: string) =>

@@ -19,6 +19,8 @@ tags:
     description: конструктор контента (роли hr, admin)
   - name: analytics
     description: сводка для HR
+  - name: ai
+    description: конструктор на ИИ — черновики и планы, каталог меняет только человек
   - name: admin
     description: аккаунты, состав сети и журнал (только роль admin)
   - name: dev
@@ -865,6 +867,152 @@ paths:
       tags: [catalog]
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: ok } }
+
+  # ---------------- ai ----------------
+  # Между моделью и каталогом всегда стоит человек: ни один адрес ниже
+  # не меняет каталог сам, кроме apply — а его нажимает кадровик (правило C-13).
+  /ai/status:
+    get:
+      tags: [ai]
+      summary: Включён ли ИИ, какой провайдер и модель
+      responses: { "200": { description: "{ enabled, provider, model, reason, stt }" } }
+  /ai/extract:
+    post:
+      tags: [ai]
+      summary: Документ → текст (.docx, .txt, .md)
+      description: >
+        Файл не сохраняется. Заголовки Word размечаются решётками и отдаются
+        отдельным списком — это готовое оглавление для плана траектории.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties: { file: { type: string, format: binary } }
+      responses:
+        "200": { description: "{ text, headings, kind, chars }" }
+        "422": { description: "doc_old_format | doc_pdf | doc_broken | doc_unsupported" }
+  /ai/transcribe:
+    post:
+      tags: [ai]
+      summary: Надиктованное → текст
+      description: Запись нигде не сохраняется — живёт столько, сколько идёт расшифровка.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties: { file: { type: string, format: binary } }
+      responses: { "200": { description: "{ text }" }, "503": { description: ключ не задан } }
+  /ai/lessons/{id}/draft:
+    post:
+      tags: [ai]
+      summary: Собрать черновик урока из регламента
+      description: В каталог не пишет. Черновик ждёт подтверждения человека.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_text]
+              properties:
+                source_text: { type: string }
+                location_id: { type: string }
+      responses:
+        "200": { description: "{ draft, provider, model, applied: false }" }
+        "422": { description: "source_too_short | source_not_meaningful | source_too_long" }
+        "429": { description: бесплатный лимит исчерпан }
+        "503": { description: провайдер не задан }
+    get:
+      tags: [ai]
+      summary: Последний черновик урока
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: location, in: query, schema: { type: string } }
+      responses: { "200": { description: ok }, "404": { description: черновика нет } }
+    delete:
+      tags: [ai]
+      summary: Выбросить черновик
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /ai/lessons/{id}/apply:
+    post:
+      tags: [ai]
+      summary: Черновик становится уроком
+      description: >
+        Единственное место, где собранное ИИ попадает в каталог (C-13).
+        Материал и тест заменяются целиком: иначе к новым вопросам добавились бы прежние.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "400": { description: черновик не той формы } }
+  /ai/lessons/{id}/source:
+    get:
+      tags: [ai]
+      summary: Кусок документа, из которого вырос урок
+      description: Подставляется в поле сборки, чтобы не искать абзац в регламенте заново.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{ source_text }" }, "404": { description: урок заводили руками } }
+  /ai/drafts:
+    get:
+      tags: [ai]
+      summary: Что ещё ждёт проверки человеком
+      responses: { "200": { description: "{ items: [...] }" } }
+  /ai/trajectories/{position_id}/plan:
+    post:
+      tags: [ai]
+      summary: Документ целиком → предложенная структура траектории
+      description: >
+        Модели уходит ОГЛАВЛЕНИЕ, а не текст: этого хватает разложить темы,
+        и запрос остаётся дешёвым на большом регламенте. Каталога не касается.
+        Модель не пишет текст, а расставляет номера разделов по урокам —
+        придумать несуществующий раздел она не может.
+      parameters: [{ name: position_id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_text]
+              properties: { source_text: { type: string } }
+      responses:
+        "200":
+          description: "{ plan: { blocks: [{ title, lessons: [{ title, sections }] }] }, sections, provider, model }"
+        "422": { description: "source_too_short | source_too_long | source_flat" }
+    get:
+      tags: [ai]
+      summary: Сохранённое предложение
+      parameters: [{ name: position_id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { description: плана нет } }
+    delete:
+      tags: [ai]
+      summary: Выбросить предложение
+      parameters: [{ name: position_id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /ai/trajectories/{position_id}/plan/apply:
+    post:
+      tags: [ai]
+      summary: План становится каркасом траектории
+      description: >
+        Присылается план, ПОПРАВЛЕННЫЙ человеком, а не тот, что предложила модель.
+        Блоки и уроки создаются пустыми: материал и тест собираются потом, по одному.
+        Аттестация остаётся последним блоком. Кусок документа сохраняется рядом
+        с каждым уроком.
+      parameters: [{ name: position_id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              properties: { plan: { type: object } }
+      responses:
+        "200": { description: "{ blocks, lessons }" }
+        "404": { description: сначала соберите план }
 
   # ---------------- admin ----------------
   # Кадровику все адреса ниже отвечают 403: он ведёт людей и содержание,
