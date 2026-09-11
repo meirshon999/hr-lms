@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { del, patch, post } from '../api';
+import { Icon } from './Icon';
 
 interface Q { id: string; text: string; options: string[]; correct_index: number; }
 interface Test { id: string; pass_mark_pct: number; questions: Q[]; }
@@ -16,13 +17,13 @@ export function TestEditor({
 
   if (!test) {
     return (
-      <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 12 }}>
+      <div className="pane">
         <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Тест ещё не создан.</p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <label style={{ fontSize: 13 }}>Проходной балл, %:
             <input type="number" min={1} max={100} value={pass}
               onChange={(e) => setPass(Number(e.target.value))}
-              style={{ width: 64, marginLeft: 6, padding: '4px 6px', border: '1.5px solid var(--line)', borderRadius: 6 }} />
+              style={{ width: 68, marginLeft: 6, padding: '5px 8px' }} />
           </label>
           <button className="btn sm" onClick={() => onCreate(pass)}>Создать тест</button>
         </div>
@@ -30,20 +31,22 @@ export function TestEditor({
     );
   }
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 12 }}>
+    <div className="pane">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
         <label style={{ fontSize: 13 }}>Проходной балл, %:
           <input type="number" min={1} max={100} value={pass}
             onChange={(e) => setPass(Number(e.target.value))}
             onBlur={() => pass !== test.pass_mark_pct && onCreate(pass)}
-            style={{ width: 64, marginLeft: 6, padding: '4px 6px', border: '1.5px solid var(--line)', borderRadius: 6 }} />
+            style={{ width: 68, marginLeft: 6, padding: '5px 8px' }} />
         </label>
         <span className="muted" style={{ fontSize: 12 }}>({test.questions.length} вопросов)</span>
       </div>
 
-      {test.questions.map((q, i) => (
-        <QuestionRow key={q.id} n={i + 1} q={q} onChange={onChange} />
-      ))}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {test.questions.map((q, i) => (
+          <QuestionRow key={q.id} n={i + 1} q={q} onChange={onChange} />
+        ))}
+      </div>
 
       <AddQuestion testId={test.id} onAdded={onChange} />
     </div>
@@ -63,11 +66,12 @@ function QuestionRow({ n, q, onChange }: { n: number; q: Q; onChange: () => void
 
   if (!edit) {
     return (
-      <div className="b-lesson" style={{ background: '#fff' }}>
+      <div className="b-lesson" style={{ background: 'var(--surface-2)' }}>
         <div className="lh">
           <b style={{ flex: 1 }}>{n}. {q.text}</b>
-          <button className="btn ghost sm" onClick={() => setEdit(true)}>изм.</button>
-          <button className="btn danger sm" onClick={() => del(`/questions/${q.id}`).then(onChange)}>✕</button>
+          <button className="btn ghost sm" onClick={() => setEdit(true)}>Изменить</button>
+          <button className="btn icon danger" title="Удалить вопрос"
+            onClick={() => del(`/questions/${q.id}`).then(onChange)}><Icon name="trash" /></button>
         </div>
         <ul style={{ margin: '6px 0 0 18px', fontSize: 13 }}>
           {q.options.map((o, i) => (
@@ -81,18 +85,18 @@ function QuestionRow({ n, q, onChange }: { n: number; q: Q; onChange: () => void
   }
 
   return (
-    <div className="b-lesson" style={{ background: '#fff' }}>
+    <div className="b-lesson" style={{ background: 'var(--surface-2)' }}>
       <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Текст вопроса"
-        style={{ width: '100%', padding: '7px 9px', border: '1.5px solid var(--line)', borderRadius: 7, marginBottom: 8 }} />
+        style={{ width: '100%', marginBottom: 8 }} />
       {opts.map((o, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
           <input type="radio" checked={correct === i} onChange={() => setCorrect(i)} title="верный" />
           <input value={o} onChange={(e) => setOpts(opts.map((x, j) => (j === i ? e.target.value : x)))}
-            style={{ flex: 1, padding: '6px 8px', border: '1.5px solid var(--line)', borderRadius: 7 }} />
-          {opts.length > 2 && <button className="btn danger sm" onClick={() => {
+            style={{ flex: 1 }} />
+          {opts.length > 2 && <button className="btn icon danger" title="Убрать вариант" onClick={() => {
             setOpts(opts.filter((_, j) => j !== i));
             if (correct >= opts.length - 1) setCorrect(0);
-          }}>✕</button>}
+          }}><Icon name="x" /></button>}
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
@@ -124,15 +128,15 @@ function AddQuestion({ testId, onAdded }: { testId: string; onAdded: () => void 
   }
 
   return (
-    <div className="b-lesson" style={{ background: '#fdf6ea', marginTop: 8 }}>
+    <div className="b-lesson" style={{ background: 'var(--accent-soft)', marginTop: 8 }}>
       <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Текст нового вопроса"
-        style={{ width: '100%', padding: '7px 9px', border: '1.5px solid var(--line)', borderRadius: 7, marginBottom: 8 }} />
+        style={{ width: '100%', marginBottom: 8 }} />
       {opts.map((o, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
           <input type="radio" checked={correct === i} onChange={() => setCorrect(i)} title="верный" />
           <input value={o} placeholder={`Вариант ${i + 1}`}
             onChange={(e) => setOpts(opts.map((x, j) => (j === i ? e.target.value : x)))}
-            style={{ flex: 1, padding: '6px 8px', border: '1.5px solid var(--line)', borderRadius: 7 }} />
+            style={{ flex: 1 }} />
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>

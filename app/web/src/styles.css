@@ -4,25 +4,46 @@
 @import '@fontsource/pt-sans/700.css';
 @import '@fontsource/pt-sans/400-italic.css';
 
+/*
+ * ПАЛИТРА.
+ *
+ * Бордо и золото — цвета сети, и они остаются. Но в рабочем кабинете, где
+ * человек сидит по часу, фирменный цвет на каждой кнопке превращается в шум:
+ * когда акцентом залито всё, акцента нет. Поэтому золото достаётся ровно двум
+ * вещам — главному действию экрана и активному пункту меню, — а всю структуру
+ * держат графит и серые. Бордо остаётся знаку, входу и экрану сотрудника.
+ *
+ * Мягкие подложки (--*-soft) введены, чтобы состояние можно было показать
+ * заливкой, а не ещё одной рамкой: рамок на конструкторе и так было пять слоёв.
+ */
 :root {
   --primary: #4a0f1e;
   --primary-2: #6a2436;
   --accent: #c6a15b;
   --accent-dark: #a9843f;
-  --bg: #f4f5f7;              /* рабочий фон — нейтральный */
+  --accent-soft: #fbf4e7;
+  --bg: #f5f6f8;              /* рабочий фон — нейтральный */
   --bg-warm: #faf6f2;         /* тёплый фон остаётся у сотрудника на телефоне */
-  --ink: #24272c;             /* тёмный нейтральный: сайдбар, строгие заголовки */
+  --ink: #23262c;             /* тёмный нейтральный: сайдбар, строгие заголовки */
   --ink-2: #33373e;
   --surface: #ffffff;
-  --text: #23262b;
-  --muted: #7d8590;
-  --line: #dfe2e6;
+  --surface-2: #f6f7f9;       /* подложка вложенного — вместо рамки второго уровня */
+  --text: #1f2328;
+  --muted: #6e7681;
+  --line: #e3e6ea;
+  --line-soft: #edeff2;       /* разделитель внутри карточки */
   --line-warm: #ece1d6;
   --error: #c0392b;
+  --error-soft: #fcefed;
   --success: #2e7d5b;
-  --radius: 6px;
-  --shadow: 0 1px 2px rgba(16, 20, 26, .06);
-  --shadow-lg: 0 10px 32px rgba(16, 20, 26, .16);
+  --success-soft: #eaf4ef;
+  --warn: #9a6b13;
+  --warn-soft: #fdf3e0;
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(20, 24, 31, .05);
+  --shadow-card: 0 1px 2px rgba(20, 24, 31, .04), 0 6px 16px -10px rgba(20, 24, 31, .16);
+  --shadow-lg: 0 18px 44px -12px rgba(20, 24, 31, .26);
   --devbar-h: 44px;
   font-family: 'PT Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -38,26 +59,34 @@ input, textarea, select { font: inherit; color: var(--text); }
 ::selection { background: var(--accent); color: #fff; }
 
 /* ---------- buttons ---------- */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 11px 18px; border-radius: 6px; font-weight: 700; transition: .15s;
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 18px; border-radius: var(--radius-sm); font-weight: 700; transition: .15s;
   background: var(--accent); color: #241318; }
 .btn:hover { background: var(--accent-dark); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.block { width: 100%; }
 .btn.lg { padding: 15px 24px; font-size: 17px; }
-.btn.ghost { background: transparent; color: var(--primary); border: 1.5px solid var(--line); }
-.btn.ghost:hover { background: #fff; border-color: var(--accent); }
+.btn.ghost { background: var(--surface); color: var(--text); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.btn.ghost:hover { background: var(--surface-2); border-color: #d3d8de; }
+/* Раскрытая вкладка урока: видно, что именно сейчас открыто под кнопкой. */
+.btn.ghost.on { background: var(--accent-soft); border-color: #e4d4b0; color: var(--accent-dark); }
 .btn.dark { background: var(--primary); color: #fff; }
 .btn.dark:hover { background: var(--primary-2); }
-.btn.danger { background: transparent; color: var(--error); border: 1.5px solid #e8c4bf; }
-.btn.danger:hover { background: #fbeceb; }
-.btn.sm { padding: 7px 13px; border-radius: 5px; font-size: 13.5px; }
+.btn.danger { background: transparent; color: var(--error); border: 1.5px solid #e8c4bf; box-shadow: none; }
+.btn.danger:hover { background: var(--error-soft); }
+.btn.sm { padding: 7px 12px; border-radius: 7px; font-size: 13.5px; }
+/* Третий уровень: удалить, свернуть, переставить. Не должен спорить ни с главной
+   кнопкой, ни со второстепенной — поэтому без рамки и без фона, пока не наведёшь. */
+.btn.icon { padding: 6px; border: none; background: transparent; color: var(--muted); box-shadow: none; }
+.btn.icon:hover { background: var(--surface-2); color: var(--text); }
+.btn.icon.danger:hover { background: var(--error-soft); color: var(--error); }
+.btn.icon:disabled { opacity: .3; }
 
 /* ---------- generic ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .muted { color: var(--muted); }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; }
-.pill.locked { background: #f0ebe4; color: var(--muted); }
+.pill.locked { background: #eceff2; color: var(--muted); }
 .pill.available { background: #f6ecd8; color: var(--accent-dark); }
 .pill.passed { background: #e4f1ea; color: var(--success); }
 .pill.stage-intern { background: #f6ecd8; color: var(--accent-dark); }
@@ -212,14 +241,15 @@ input, textarea, select { font: inherit; color: var(--text); }
 
 /* ---------- HR (desktop) ---------- */
 .hr-app { display: flex; min-height: 100vh; }
-.hr-side { width: 212px; background: var(--ink); color: #fff; padding: 16px 12px; flex: none;
+.hr-side { width: 228px; background: var(--ink); color: #fff; padding: 18px 12px; flex: none;
   display: flex; flex-direction: column; gap: 3px; position: sticky; top: 0; height: 100vh;
   /* снизу висит служебная панель DEMO — иначе она накрывает кнопку выхода */
   padding-bottom: calc(var(--devbar-h) + 12px);
   border-top: 3px solid var(--primary); }
 .hr-side .brand { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 18px; padding: 8px 10px 16px; }
 .hr-side .brand small { display: block; color: #98a0ab; font-family: 'PT Sans'; font-weight: 400; font-size: 12px; }
-.hr-side a { color: #c9ced6; text-decoration: none; padding: 9px 11px; border-radius: 5px; font-weight: 700; font-size: 14px; }
+.hr-side a { color: #c9ced6; text-decoration: none; padding: 10px 12px; border-radius: var(--radius-sm);
+  font-weight: 700; font-size: 14px; display: flex; align-items: center; }
 .hr-side a:hover { background: rgba(255,255,255,.08); }
 .hr-side a.active { background: var(--accent); color: #241318; }
 .hr-side a:not(.active):hover { color: #fff; }
@@ -232,14 +262,14 @@ input, textarea, select { font: inherit; color: var(--text); }
   cursor: pointer; text-align: center; }
 .hr-side .who .logout:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.6); }
 
-.hr-main { flex: 1; padding: 22px 24px 88px; max-width: 1180px; }
+.hr-main { flex: 1; padding: 28px 30px 88px; max-width: 1280px; }
 /* в рабочей панели заголовки без засечек — засечки остаются в логотипе и у сотрудника */
 .hr-main h1, .hr-main h2, .hr-main h3, .hr-main h4 {
   font-family: 'PT Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text); letter-spacing: -.01em; }
-.hr-main h1 { font-size: 21px; margin-bottom: 2px; }
+.hr-main h1 { font-size: 24px; margin-bottom: 3px; }
 .hr-main h2 { font-size: 17px; }
-.hr-main .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+.hr-main .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
 
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .toolbar input, .toolbar select { padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
@@ -256,7 +286,8 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 .mini-progress { display: flex; align-items: center; gap: 8px; }
 .mini-progress .progress { width: 90px; }
 
-.panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 16px; margin-bottom: 12px; }
+.panel { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius);
+  box-shadow: var(--shadow-card); padding: 16px 18px; margin-bottom: 14px; }
 .panel > h3 { font-size: 15px; margin-bottom: 10px; }
 .panel.kpi { margin-bottom: 0; padding: 12px 14px; }
 .panel.kpi .n { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1;
@@ -278,22 +309,103 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 .ai-modal textarea { border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; background: #fff; }
 .ai-modal .panel { margin-bottom: 0; }
 
-/* constructor */
-.builder { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
-.pos-list a { display: block; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
-  text-decoration: none; color: var(--text); margin-bottom: 8px; }
-.pos-list a.active { border-color: var(--accent); background: #fdf6ea; }
-.pos-list a .st { font-size: 12px; font-weight: 700; }
-.builder-block { border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 14px; }
-.builder-block > header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+/* ---------- constructor ----------
+ *
+ * Правило одной рамки. Было так: рамка блока → рамка урока → рамка редактора
+ * → рамка карточки вопроса → рамки полей, все одного цвета и толщины. Глаз
+ * переставал понимать, что во что вложено. Теперь рамка есть только у карточки
+ * верхнего уровня, вложенность показывают подложкой, а поля ввода остаются
+ * обведёнными — там рамка означает «сюда можно печатать».
+ */
+.builder { display: grid; grid-template-columns: 244px 1fr; gap: 22px; align-items: start; }
+.pos-list a { display: block; padding: 11px 13px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: transparent; text-decoration: none; color: var(--text); margin-bottom: 4px; font-size: 14.5px; }
+.pos-list a:hover { background: var(--surface-2); }
+.pos-list a.active { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow-card); }
+.pos-list a .st { font-size: 12px; font-weight: 700; margin-top: 2px; }
+
+.builder-block { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface);
+  box-shadow: var(--shadow-card); margin-bottom: 16px; }
+.builder-block > header { padding: 14px 18px; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--line-soft); }
 .builder-block > header h4 { flex: 1; font-size: 15px; }
-.builder-block .body { padding: 12px 16px; }
-.b-lesson { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fdfaf6; }
+.builder-block .body { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.builder-block .body > * { width: 100%; }
+.builder-block .body > .btn { width: auto; }
+/* Пустой блок — не ошибка вёрстки, а незаконченная работа: показываем мягко. */
+.builder-block.empty { border-color: #e7c9c4; }
+
+.b-lesson { border: none; border-radius: var(--radius-sm); padding: 12px 14px; margin: 0; background: var(--surface-2); }
 .b-lesson .lh { display: flex; align-items: center; gap: 8px; }
 .b-lesson .lh b { flex: 1; }
-.tag { font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: #f0ebe4; color: var(--muted); }
-.tag.ok { background: #e4f1ea; color: var(--success); }
-.tag.no { background: #fbeceb; color: var(--error); }
+.b-lesson .lh h4 { flex: 1; }
+/* Урок с пробелом: полоса слева вместо рамки вокруг — видно в списке и
+   не превращает десяток уроков в красную стену. */
+.b-lesson.gap { box-shadow: inset 3px 0 0 var(--error); }
+.b-lesson .acts { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+
+/* Белая подложка внутри урока: редактор материала, теста, области действия. */
+.pane { background: var(--surface); border-radius: var(--radius-sm); padding: 14px; box-shadow: var(--shadow); }
+/* Поля в конструкторе. Рамка остаётся только здесь — это единственное место,
+   где она значит «сюда можно печатать», а не «тут кончается один блок». */
+.builder input[type="text"], .builder input[type="number"], .builder input:not([type]),
+.builder textarea, .builder select {
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px;
+  background: var(--surface); font: inherit; }
+.builder textarea { line-height: 1.5; resize: vertical; }
+.builder input:focus, .builder textarea:focus, .builder select:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.pane + .pane { margin-top: 10px; }
+
+.tag { font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+  background: #eceff2; color: var(--muted); white-space: nowrap; }
+.tag.ok { background: var(--success-soft); color: var(--success); }
+.tag.no { background: var(--error-soft); color: var(--error); }
+
+/* Вкладки точек. Раньше рядом стояли выпадающий список и ряд кнопок — два
+   органа на одно действие; остался один, и на нём же видна готовность. */
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; margin-bottom: -1px;
+  font-size: 14px; font-weight: 700; color: var(--muted); border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: .15s; }
+.tabs button:hover { color: var(--text); background: var(--surface-2); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.tabs .n { min-width: 19px; padding: 0 6px; height: 19px; border-radius: 10px; font-size: 11px;
+  display: inline-grid; place-items: center; background: var(--warn); color: #fff; }
+.tabs .done { color: var(--success); stroke-width: 2.2; }
+
+/* Строка недоделок: свёрнутая в одну фразу, с переходом к первому пробелу.
+   Список из восьми пунктов наверху экрана всё равно не читали. */
+.notice { display: flex; align-items: center; gap: 10px; padding: 11px 15px; border-radius: var(--radius);
+  font-size: 13.5px; margin-bottom: 14px; }
+.notice .grow { flex: 1; }
+.notice.warn { background: var(--warn-soft); color: #7a5310; }
+.notice.bad { background: var(--error-soft); color: var(--error); }
+.notice.info { background: var(--surface-2); color: var(--muted); }
+details.notice { display: block; }
+details.notice > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+details.notice > summary::-webkit-details-marker { display: none; }
+details.notice ul { margin: 9px 0 0 26px; }
+details.notice li { font-size: 13px; margin-top: 3px; }
+
+/* Куда прыгнули — подсветить на секунду, иначе человек не поймёт, что переехал. */
+@keyframes flashring { from { box-shadow: 0 0 0 3px rgba(198,161,91,.55); } to { box-shadow: 0 0 0 3px rgba(198,161,91,0); } }
+.flash { animation: flashring 1.3s ease-out; }
+
+/* Пустая должность: приглашение принести документы, а не выговор за то,
+   что в ней ещё ничего нет. */
+.invite { background: var(--surface); border: 1px dashed var(--line); border-radius: 14px;
+  padding: 44px 28px; text-align: center; }
+.invite .ico { width: 54px; height: 54px; border-radius: 15px; background: var(--accent-soft);
+  color: var(--accent-dark); display: grid; place-items: center; margin: 0 auto 16px; }
+.invite h3 { font-size: 19px; margin-bottom: 8px; }
+.invite p { color: var(--muted); font-size: 14px; max-width: 470px; margin: 0 auto 20px; }
+.invite .or { margin-top: 14px; font-size: 13px; }
+
+/* Шапка экрана: состояние слева, действия справа. */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; margin-bottom: 16px; }
+.page-head .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- DevBar ---------- */
 .devbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; height: var(--devbar-h);
@@ -365,7 +477,7 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 
 /* ---------- скелетоны и офлайн ---------- */
 @keyframes shimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
-.skel { border-radius: 8px; background: linear-gradient(90deg,#eee5da 25%,#f7f1e9 50%,#eee5da 75%);
+.skel { border-radius: 6px; background: linear-gradient(90deg,#e9ecf0 25%,#f5f6f8 50%,#e9ecf0 75%);
   background-size: 840px 100%; animation: shimmer 1.3s infinite linear; }
 .skel + .skel { margin-top: 8px; }
 .offline-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 90; background: var(--error);
@@ -422,5 +534,5 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 
   /* конструктор на телефоне не редактируем */
   .builder { grid-template-columns: 1fr; }
-  .desktop-only-note { display: block; }
+  .desktop-only-note { display: flex; }
 }

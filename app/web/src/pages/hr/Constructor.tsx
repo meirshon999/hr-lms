@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { del, get, patch, post, put, ApiError } from '../../api';
 import { useAsync, useBump, Loader, ErrorBox, useToast } from '../../lib';
 import { InlineAdd, EditableTitle, MoveBtns, reordered } from '../../components/inline';
+import { Icon } from '../../components/Icon';
 import { FilePicker } from '../../components/FilePicker';
 import { MaterialForm } from '../../components/MaterialForm';
 import { TestEditor } from '../../components/TestEditor';
@@ -28,9 +29,11 @@ export function Constructor() {
       <h1>Конструктор</h1>
       <p className="subtitle">Должности, траектории обучения, тесты</p>
 
-      <div className="desktop-only-note banner info" style={{ marginBottom: 14 }}>
-        Конструктор рассчитан на компьютер — на телефоне редактировать неудобно.
-        Откройте эту страницу на большом экране.
+      <div className="desktop-only-note notice info" style={{ marginBottom: 14 }}>
+        <Icon name="alert" />
+        <span className="grow">
+          Конструктор рассчитан на компьютер — на телефоне редактировать неудобно.
+        </span>
       </div>
 
       {loading && <Loader />}
@@ -41,8 +44,7 @@ export function Constructor() {
             {pl.items.map((p) => (
               <a key={p.id} href={`#/hr/constructor/${p.id}`} className={p.id === positionId ? 'active' : ''}>
                 {p.name}
-                <div className={`st ${p.trajectory_status === 'active' ? '' : ''}`}
-                  style={{ color: p.trajectory_status === 'active' ? 'var(--success)' : 'var(--muted)' }}>
+                <div className="st" style={{ color: p.trajectory_status === 'active' ? 'var(--success)' : 'var(--muted)' }}>
                   {p.trajectory_status === 'active' ? '● Опубликована' : '○ Черновик'}
                 </div>
               </a>
@@ -80,6 +82,12 @@ interface AiStatus {
   reads_documents: boolean;
 }
 
+/** Пробел в дереве: где он и какую вкладку открыть, чтобы его закрыть. */
+interface Gap { nodeId: string; lessonId?: string; tab?: LessonTab; }
+type LessonTab = 'material' | 'test' | 'scope';
+/** Куда перевели человека кнопкой «Показать» — урок и вкладка в нём. */
+type Focus = { lessonId: string; tab: LessonTab; at: number } | null;
+
 function TrajectoryEditor({ positionId, positionName, onChange }: {
   positionId: string; positionName: string; onChange: () => void;
 }) {
@@ -87,6 +95,9 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   const [preview, setPreview] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [attAi, setAttAi] = useState(false);
+  const [focus, setFocus] = useState<Focus>(null);
+  // Человек нажал «собрать вручную» — показываем пустое дерево вместо приглашения.
+  const [manual, setManual] = useState(false);
   // Точка, глазами которой HR смотрит траекторию. Уроки с общим содержимым
   // выглядят одинаково на любой, а точечные показывают вариант выбранной.
   const [at, setAt] = useState('');
@@ -126,6 +137,44 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
   const att = data.blocks.find((b) => b.kind === 'attestation');
   const regular = data.blocks.filter((b) => b.kind === 'regular');
+  const published = data.status === 'active';
+  // Должность, в которой ещё ничего нет: встречаем приглашением, а не списком
+  // недоделок. Человек не сделал ничего плохого — он просто начал.
+  const blank = regular.length === 0 && data.pre_onboarding.length === 0 && !manual;
+
+  /*
+   * Где именно пробел. Сервер присылает недоделки строками — для каркаса
+   * это правильно (там бывает «нет блока аттестации», которому не соответствует
+   * ни один узел). А вот незаполненное содержимое всегда лежит в конкретном
+   * уроке, и его мы находим по тому же признаку, по которому рисуем метки
+   * «материал ✓ / тест —»: одни данные, одно правило, расхождению взяться неоткуда.
+   */
+  const gaps: Gap[] = [];
+  for (const b of regular) {
+    if (!b.lessons?.length) { gaps.push({ nodeId: `blk-${b.id}` }); continue; }
+    for (const l of b.lessons) {
+      if (!l.everywhere && !l.locations?.length) gaps.push({ nodeId: `les-${l.id}`, lessonId: l.id, tab: 'scope' });
+      if (!hasMaterial(l)) gaps.push({ nodeId: `les-${l.id}`, lessonId: l.id, tab: 'material' });
+      if (!hasTest(l)) gaps.push({ nodeId: `les-${l.id}`, lessonId: l.id, tab: 'test' });
+    }
+  }
+  if (att && !att.test?.questions?.length) gaps.push({ nodeId: 'att' });
+
+  /** Перевести человека к первому пробелу: прокрутить, раскрыть, подсветить. */
+  function showFirstGap() {
+    const g = gaps[0];
+    if (!g) return;
+    if (g.lessonId && g.tab) setFocus({ lessonId: g.lessonId, tab: g.tab, at: Date.now() });
+    // Вкладка раскрывается этим же кадром, поэтому прокрутку откладываем:
+    // иначе целимся в узел прежней высоты и промахиваемся.
+    setTimeout(() => {
+      const el = document.getElementById(g.nodeId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 1400);
+    }, 60);
+  }
 
   const movePre = (i: number, dir: -1 | 1) =>
     put(`/trajectories/${positionId}/pre-onboarding/order`, {
@@ -152,75 +201,40 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
   return (
     <div>
-      <div className="panel row-between">
+      <div className="page-head">
         <div>
-          <b>{data.status === 'active' ? '● Опубликована' : '○ Черновик'}</b>
-          <span className="muted" style={{ fontSize: 13 }}>
-            {' '}— {data.status === 'active' ? 'по ней открывается онбординг' : 'новички ждут публикации'}
+          <span className={`pill ${published ? 'passed' : 'locked'}`}>
+            {published ? 'Опубликована' : 'Черновик'}
+          </span>
+          <span className="muted" style={{ fontSize: 13, marginLeft: 10 }}>
+            {published ? 'по ней открывается онбординг' : 'новички ждут публикации'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        {/*
+          Залита одна кнопка — та, которая сейчас главная. На пустой должности
+          это сборка из документов: именно так траекторию и собирают (правило 3).
+          Как только каркас есть, акцент переходит на публикацию.
+        */}
+        <div className="acts">
           {ai?.enabled && (
-            <button className="btn ghost sm" onClick={() => setPlanning(true)}
+            <button className={`btn sm${blank ? '' : ' ghost'}`} onClick={() => setPlanning(true)}
               title="Загрузить документы и получить готовую траекторию целиком">
-              ✨ Собрать из документов
+              <Icon name="wand" /> Собрать из документов
             </button>
           )}
-          <button className="btn ghost sm" onClick={() => setPreview(true)}>Предпросмотр</button>
-          {data.status === 'active'
+          <button className="btn ghost sm" onClick={() => setPreview(true)}>
+            <Icon name="eye" /> Предпросмотр
+          </button>
+          {published
             ? <button className="btn ghost sm" onClick={unpublish}>Снять с публикации</button>
             : (
-              <button className="btn sm" onClick={publish} disabled={!canPublish}
+              <button className={`btn sm${blank ? ' ghost' : ''}`} onClick={publish} disabled={!canPublish}
                 title={canPublish ? 'Открыть онбординг по этой траектории'
-                  : 'Сначала доделайте каркас — список ниже'}>
+                  : 'Сначала доделайте каркас — строка ниже'}>
                 Опубликовать
               </button>
             )}
         </div>
-      </div>
-
-      {/* Точка, глазами которой смотрим, и готовность каждой из них. Траектория
-          публикуется по каркасу, а онбординг открывается только на готовых точках. */}
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="row-between" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <span className="muted">Смотрю как</span>
-            <select value={at} onChange={(e) => setAt(e.target.value)}>
-              {locs?.items.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {/* Выбранная точка — залитой кнопкой, недоделки — счётчиком на ней:
-                так видно, куда идти, не открывая каждую по очереди. */}
-            {data.locations?.map((l) => {
-              const active = l.location_id === at;
-              return (
-                <button key={l.location_id} className={`btn sm${active ? '' : ' ghost'}`}
-                  onClick={() => setAt(l.location_id)}
-                  title={l.ready ? 'Всё заполнено' : l.problems.slice(0, 3).join('; ')}
-                  style={{ borderColor: l.ready ? 'var(--success)' : 'var(--warn, #b8860b)' }}>
-                  {l.name}
-                  {l.ready ? (
-                    <span style={{ marginLeft: 6, color: active ? 'inherit' : 'var(--success)' }}>✓</span>
-                  ) : (
-                    <span style={{
-                      marginLeft: 6, padding: '1px 7px', borderRadius: 10, fontSize: 11,
-                      fontWeight: 700, background: 'var(--warn, #b8860b)', color: '#fff',
-                    }}>
-                      {l.problems.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        {data.locations?.some((l) => !l.ready) && (
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>
-            На точках с ○ онбординг не откроется, пока не заполнены их уроки. Новички
-            дождутся и уйдут учиться сами, как только пробел закроют.
-          </p>
-        )}
       </div>
 
       {planning && (
@@ -245,160 +259,238 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
       {preview && <ConstructorPreview positionId={positionId} onClose={() => setPreview(false)} />}
 
-      {/* Каркас — то, на чём откажет сервер. Пишем отдельно и первым. */}
-      {data.problems.length > 0 && (
-        <div className="banner warn" style={{ marginBottom: 16 }}>
-          <b>Чтобы опубликовать, доделайте:</b>
-          <ul style={{ margin: '6px 0 0 18px' }}>
-            {data.problems.slice(0, 8).map((p, i) => <li key={i} style={{ fontSize: 13 }}>{p}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* Содержимое точки. Публикацию не держит — держит онбординг на ней,
-          и сказать надо именно это, а не «нельзя опубликовать». */}
-      {hereProblems.length > 0 && (
-        <div className="banner warn" style={{ marginBottom: 16 }}>
-          <b>«{currentLocation?.name}» — новички этой точки будут ждать, пока не заполнено:</b>
-          <ul style={{ margin: '6px 0 0 18px' }}>
-            {hereProblems.slice(0, 8).map((p, i) => <li key={i} style={{ fontSize: 13 }}>{p}</li>)}
-          </ul>
-          {hereProblems.length > 8 && (
-            <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 0' }}>
-              …и ещё {hereProblems.length - 8}
+      {blank ? (
+        <div className="invite">
+          <div className="ico"><Icon name="layers" size={26} /></div>
+          <h3>В должности «{positionName}» пока ничего нет</h3>
+          <p>
+            Принесите регламенты и инструкции — блоки, уроки с тестами и финальная
+            аттестация соберутся сами, а вы их поправите. Собирать дерево вручную
+            и искать под каждый урок нужный кусок текста не придётся.
+          </p>
+          {ai?.enabled ? (
+            <button className="btn" onClick={() => setPlanning(true)}>
+              <Icon name="wand" /> Собрать из документов
+            </button>
+          ) : (
+            <p className="notice warn" style={{ display: 'inline-flex' }}>
+              <Icon name="alert" />
+              <span>Сборка из документов выключена: в настройках нет ключа ИИ</span>
             </p>
           )}
-          <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
-            Публиковать это не мешает: на готовых точках онбординг откроется сразу,
-            а здешние новички уйдут учиться сами, как только пробел закроют.
-          </p>
+          <div className="or">
+            <button className="btn icon" style={{ padding: '6px 10px', textDecoration: 'underline' }}
+              onClick={() => setManual(true)}>
+              или собрать вручную
+            </button>
+          </div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Точка, глазами которой смотрим, и её готовность. Траектория публикуется
+              по каркасу, а онбординг открывается только на готовых точках. */}
+          <div className="tabs">
+            {data.locations?.map((l) => (
+              <button key={l.location_id} className={l.location_id === at ? 'on' : ''}
+                onClick={() => setAt(l.location_id)}
+                title={l.ready ? 'Всё заполнено' : l.problems.slice(0, 3).join('; ')}>
+                {l.name}
+                {l.ready
+                  ? <Icon name="check" size={14} className="done" />
+                  : <span className="n">{l.problems.length}</span>}
+              </button>
+            ))}
+          </div>
 
-      {/* pre-onboarding */}
-      <div className="builder-block">
-        <header><h4>Пре-онбординг (материалы о компании)</h4></header>
-        <div className="body">
-          {data.pre_onboarding.map((it, i) => (
-            <div key={it.id} className="b-lesson">
-              <div className="lh">
-                <MoveBtns i={i} count={data.pre_onboarding.length} onMove={(d) => movePre(i, d)} />
-                <span className="tag">{typeLabel(it.content_type)}</span>
-                <EditableTitle value={it.title} onSave={(v) => patch(`/pre-onboarding/${it.id}`, { title: v }).then(refresh)} />
-                <button className="btn danger sm" onClick={() => del(`/pre-onboarding/${it.id}`).then(refresh)}>✕</button>
-              </div>
-              {it.content_type === 'text' ? (
-                <textarea defaultValue={it.text_body ?? ''} rows={2} style={{ width: '100%', marginTop: 8 }}
-                  onBlur={(e) => patch(`/pre-onboarding/${it.id}`, { text_body: e.target.value }).then(refresh)} />
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  <FilePicker
-                    kind={it.content_type === 'video' ? 'video' : 'pdf'}
-                    value={it.file_url}
-                    onChange={(url) => patch(`/pre-onboarding/${it.id}`, { file_url: url }).then(refresh)}
-                  />
-                </div>
+          {/* Каркас — то, на чём откажет сервер. Пишем отдельно и первым: эти
+              недоделки общие на сеть, и части из них не соответствует узел дерева. */}
+          {data.problems.length > 0 && (
+            <details className="notice bad">
+              <summary>
+                <Icon name="alert" />
+                <b className="grow">
+                  Каркас не готов: {data.problems.length} {plural(data.problems.length, 'недоделка', 'недоделки', 'недоделок')}
+                </b>
+                <span style={{ fontSize: 12.5, opacity: .8 }}>показать</span>
+              </summary>
+              <ul>
+                {data.problems.slice(0, 12).map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            </details>
+          )}
+
+          {/* Содержимое точки. Публикацию не держит — держит онбординг на ней,
+              и сказать надо именно это, а не «нельзя опубликовать». */}
+          {hereProblems.length > 0 && (
+            <div className="notice warn">
+              <Icon name="clock" />
+              <span className="grow">
+                <b>«{currentLocation?.name}»</b> — новички этой точки будут ждать:
+                не заполнено {hereProblems.length} {plural(hereProblems.length, 'место', 'места', 'мест')}.
+                На готовых точках онбординг откроется сразу.
+              </span>
+              {gaps.length > 0 && (
+                <button className="btn ghost sm" onClick={showFirstGap}>Показать первое</button>
               )}
             </div>
+          )}
+
+          {/* pre-onboarding */}
+          <div className="builder-block">
+            <header><h4>Пре-онбординг — материалы о компании</h4></header>
+            <div className="body">
+              {data.pre_onboarding.map((it, i) => (
+                <div key={it.id} className="b-lesson">
+                  <div className="lh">
+                    <MoveBtns i={i} count={data.pre_onboarding.length} onMove={(d) => movePre(i, d)} />
+                    <span className="tag">{typeLabel(it.content_type)}</span>
+                    <EditableTitle value={it.title} onSave={(v) => patch(`/pre-onboarding/${it.id}`, { title: v }).then(refresh)} />
+                    <button className="btn icon danger" title="Удалить материал"
+                      onClick={() => del(`/pre-onboarding/${it.id}`).then(refresh)}><Icon name="trash" /></button>
+                  </div>
+                  {it.content_type === 'text' ? (
+                    <textarea defaultValue={it.text_body ?? ''} rows={3} style={{ width: '100%', marginTop: 8 }}
+                      onBlur={(e) => patch(`/pre-onboarding/${it.id}`, { text_body: e.target.value }).then(refresh)} />
+                  ) : (
+                    <div style={{ marginTop: 8 }}>
+                      <FilePicker
+                        kind={it.content_type === 'video' ? 'video' : 'pdf'}
+                        value={it.file_url}
+                        onChange={(url) => patch(`/pre-onboarding/${it.id}`, { file_url: url }).then(refresh)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+              <InlineAdd placeholder="Заголовок материала" label="+ материал" withType
+                onAdd={async (title, type) => {
+                  await post(`/trajectories/${positionId}/pre-onboarding`, {
+                    title, content_type: type,
+                    text_body: type === 'text' ? 'Текст материала…' : null,
+                    file_url: null,   // файл выбирается отдельно, ссылок-заглушек больше нет
+                  });
+                  refresh();
+                }} />
+            </div>
+          </div>
+
+          {/* regular blocks */}
+          {regular.map((b, bi) => (
+            <div key={b.id} id={`blk-${b.id}`}
+              className={`builder-block${b.lessons?.length ? '' : ' empty'}`}>
+              <header>
+                <MoveBtns i={bi} count={regular.length} onMove={(d) => moveBlock(bi, d)} />
+                <EditableTitle value={b.title} heading onSave={(v) => patch(`/blocks/${b.id}`, { title: v }).then(refresh)} />
+                {!b.lessons?.length && <span className="tag no">нет уроков</span>}
+                <button className="btn icon danger" title="Удалить блок со всеми уроками"
+                  onClick={() => {
+                    if (confirm('Удалить блок со всеми уроками?')) del(`/blocks/${b.id}`).then(refresh);
+                  }}><Icon name="trash" /></button>
+              </header>
+              <div className="body">
+                {b.lessons.map((l: any, li: number) => (
+                  <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
+                    ai={!!ai?.enabled} focus={focus}
+                    i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
+                ))}
+                <InlineAdd placeholder="Название урока" label="+ урок"
+                  onAdd={async (title) => { await post(`/blocks/${b.id}/lessons`, { title }); refresh(); }} />
+              </div>
+            </div>
           ))}
-          <InlineAdd placeholder="Заголовок материала" label="+ материал" withType
-            onAdd={async (title, type) => {
-              await post(`/trajectories/${positionId}/pre-onboarding`, {
-                title, content_type: type,
-                text_body: type === 'text' ? 'Текст материала…' : null,
-                file_url: null,   // файл выбирается отдельно, ссылок-заглушек больше нет
-              });
-              refresh();
-            }} />
-        </div>
-      </div>
 
-      {/* regular blocks */}
-      {regular.map((b, bi) => (
-        /* Пустой блок подсвечиваем на месте, а не только строкой в списке
-           недоделок: человеку надо видеть, куда нажать, а не искать по названию. */
-        <div key={b.id} className="builder-block"
-          style={b.lessons?.length ? undefined : { borderColor: 'var(--error)' }}>
-          <header>
-            <MoveBtns i={bi} count={regular.length} onMove={(d) => moveBlock(bi, d)} />
-            <EditableTitle value={b.title} heading onSave={(v) => patch(`/blocks/${b.id}`, { title: v }).then(refresh)} />
-            <button className="btn danger sm" onClick={() => {
-              if (confirm('Удалить блок со всеми уроками?')) del(`/blocks/${b.id}`).then(refresh);
-            }}>Удалить блок</button>
-          </header>
-          <div className="body">
-            {b.lessons.map((l: any, li: number) => (
-              <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
-                ai={!!ai?.enabled}
-                i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
-            ))}
-            <InlineAdd placeholder="Название урока" label="+ урок"
-              onAdd={async (title) => { await post(`/blocks/${b.id}/lessons`, { title }); refresh(); }} />
-          </div>
-        </div>
-      ))}
+          <InlineAdd placeholder="Название блока" label="+ блок"
+            onAdd={async (title) => { await post(`/trajectories/${positionId}/blocks`, { title }); refresh(); }} />
 
-      <InlineAdd placeholder="Название блока" label="+ блок"
-        onAdd={async (title) => { await post(`/trajectories/${positionId}/blocks`, { title }); refresh(); }} />
-
-      {/* attestation */}
-      {att && (
-        <div className="builder-block" style={{ marginTop: 16, borderColor: 'var(--accent)' }}>
-          <header className="row-between">
-            <h4>★ Аттестация — финальный тест</h4>
-            {ai?.enabled && (
-              <button className="btn sm" onClick={() => setAttAi(true)}
-                title="Свои вопросы по материалам всех уроков — не повторяющие уроки">
-                ✨ Собрать ИИ
-              </button>
-            )}
-          </header>
-          <div className="body">
-            <TestEditor
-              test={att.test}
-              onCreate={(pass) => put(`/blocks/${att.id}/test`, { pass_mark_pct: pass }).then(refresh)}
-              onChange={refresh}
-            />
-          </div>
-        </div>
+          {/* attestation */}
+          {att && (
+            <div className="builder-block" id="att" style={{ marginTop: 18 }}>
+              <header>
+                <Icon name="award" size={18} />
+                <h4>Аттестация — финальный тест</h4>
+                {!att.test?.questions?.length && <span className="tag no">нет вопросов</span>}
+                {ai?.enabled && (
+                  <button className="btn ghost sm" onClick={() => setAttAi(true)}
+                    title="Свои вопросы по материалам всех уроков — не повторяющие урочные">
+                    <Icon name="wand" /> Собрать ИИ
+                  </button>
+                )}
+              </header>
+              <div className="body">
+                <TestEditor
+                  test={att.test}
+                  onCreate={(pass) => put(`/blocks/${att.id}/test`, { pass_mark_pct: pass }).then(refresh)}
+                  onChange={refresh}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai }: {
+const hasMaterial = (l: any) => !!(l.material && (l.material.text_body || l.material.file_url));
+const hasTest = (l: any) => !!(l.test && l.test.questions.length > 0);
+
+/** «3 недоделки» против «3 недоделок» — мелочь, по которой видно, писал человек или нет. */
+function plural(n: number, one: string, few: string, many: string) {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b > 1 && b < 5) return few;
+  if (b === 1) return one;
+  return many;
+}
+
+function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, focus }: {
   lesson: any; onChange: () => void; i: number; count: number; onMove: (dir: -1 | 1) => void;
-  at: string; locations: Loc[]; ai: boolean;
+  at: string; locations: Loc[]; ai: boolean; focus: Focus;
 }) {
-  const [tab, setTab] = useState<'material' | 'test' | 'scope' | null>(null);
+  const [tab, setTab] = useState<LessonTab | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
-  const hasMat = lesson.material && (lesson.material.text_body || lesson.material.file_url);
-  const hasTest = lesson.test && lesson.test.questions.length > 0;
+  const hasMat = hasMaterial(lesson);
+  const hasT = hasTest(lesson);
+  const noScope = !lesson.everywhere && !lesson.locations?.length;
   // У точечного урока материал и тест заводятся под выбранную точку,
   // у общего — на всю сеть; сервер не даст перепутать одно с другим.
   const slot = lesson.content_per_location ? at : undefined;
   const here = locations.find((l) => l.id === at)?.name ?? 'этой точки';
 
+  // Кнопка «Показать первое» переводит человека к пробелу — значит, нужная
+  // вкладка должна раскрыться сама, иначе он окажется у закрытого урока.
+  useEffect(() => {
+    if (focus && focus.lessonId === lesson.id) setTab(focus.tab);
+  }, [focus, lesson.id]);
+
   return (
-    <div className="b-lesson">
+    <div className={`b-lesson${hasMat && hasT && !noScope ? '' : ' gap'}`} id={`les-${lesson.id}`}>
       <div className="lh">
         <MoveBtns i={i} count={count} onMove={onMove} />
         <EditableTitle value={lesson.title} onSave={(v) => patch(`/lessons/${lesson.id}`, { title: v }).then(onChange)} />
         {lesson.content_per_location && <span className="tag">своё на точке</span>}
-        {!lesson.everywhere && <span className="tag">только {lesson.locations?.length ?? 0} точки</span>}
+        {!lesson.everywhere && (
+          <span className={`tag ${noScope ? 'no' : ''}`}>
+            {noScope ? 'точки не выбраны' : `только ${lesson.locations.length} точки`}
+          </span>
+        )}
         <span className={`tag ${hasMat ? 'ok' : 'no'}`}>материал {hasMat ? '✓' : '—'}</span>
-        <span className={`tag ${hasTest ? 'ok' : 'no'}`}>тест {hasTest ? '✓' : '—'}</span>
-        <button className="btn danger sm" onClick={() => {
+        <span className={`tag ${hasT ? 'ok' : 'no'}`}>тест {hasT ? '✓' : '—'}</span>
+        <button className="btn icon danger" title="Удалить урок" onClick={() => {
           if (confirm('Удалить урок?')) del(`/lessons/${lesson.id}`).then(onChange);
-        }}>✕</button>
+        }}><Icon name="trash" /></button>
       </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-        <button className="btn ghost sm" onClick={() => setTab(tab === 'material' ? null : 'material')}>Материал</button>
-        <button className="btn ghost sm" onClick={() => setTab(tab === 'test' ? null : 'test')}>Тест</button>
-        <button className="btn ghost sm" onClick={() => setTab(tab === 'scope' ? null : 'scope')}>Где и чьё</button>
+      <div className="acts">
+        <button className={`btn ghost sm${tab === 'material' ? ' on' : ''}`}
+          onClick={() => setTab(tab === 'material' ? null : 'material')}>Материал</button>
+        <button className={`btn ghost sm${tab === 'test' ? ' on' : ''}`}
+          onClick={() => setTab(tab === 'test' ? null : 'test')}>Тест</button>
+        <button className={`btn ghost sm${tab === 'scope' ? ' on' : ''}`}
+          onClick={() => setTab(tab === 'scope' ? null : 'scope')}>Где и чьё</button>
         {ai && (
-          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setAiOpen(true)}>
-            Собрать ИИ
+          <button className="btn ghost sm" style={{ marginLeft: 'auto' }} onClick={() => setAiOpen(true)}>
+            <Icon name="wand" /> Собрать ИИ
           </button>
         )}
       </div>
@@ -467,8 +559,8 @@ function LessonScope({ lesson, locations, onChange }: {
   }
 
   return (
-    <div style={{ marginTop: 10, background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 12 }}>
-      <div className="field" style={{ marginBottom: 12 }}>
+    <div className="pane" style={{ marginTop: 10 }}>
+      <div className="field" style={{ marginBottom: 14 }}>
         <span>Где есть урок</span>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 4 }}>
           <input type="radio" checked={!!lesson.everywhere} disabled={busy}
@@ -487,8 +579,9 @@ function LessonScope({ lesson, locations, onChange }: {
               </label>
             ))}
             {chosen.length === 0 && (
-              <span className="banner warn" style={{ fontSize: 12.5, marginTop: 4 }}>
-                Не выбрано ни одной точки — такой урок не попадёт ни к кому.
+              <span className="notice bad" style={{ fontSize: 12.5, marginTop: 6, marginBottom: 0 }}>
+                <Icon name="alert" size={14} />
+                <span>Не выбрано ни одной точки — такой урок не попадёт ни к кому</span>
               </span>
             )}
           </div>

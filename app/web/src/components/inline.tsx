@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from './Icon';
 
 type Ctype = 'text' | 'video' | 'pdf';
 
@@ -13,7 +14,15 @@ export function InlineAdd({
   const [type, setType] = useState<Ctype>('text');
   const [busy, setBusy] = useState(false);
 
-  if (!open) return <button className="btn ghost sm" onClick={() => setOpen(true)}>{label}</button>;
+  // Плюс рисуем значком, а не символом из шрифта: у «+» в PT Sans другая
+  // толщина и высота, чем у остальных значков, и ряд кнопок выглядит рваным.
+  if (!open) {
+    return (
+      <button className="btn ghost sm" onClick={() => setOpen(true)}>
+        <Icon name="plus" size={14} />{label.replace(/^\+\s*/, '')}
+      </button>
+    );
+  }
 
   async function go() {
     if (!v.trim()) return;
@@ -27,10 +36,10 @@ export function InlineAdd({
       <input autoFocus placeholder={placeholder} value={v}
         onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && go()}
-        style={{ flex: 1, minWidth: 160, padding: '8px 10px', border: '1.5px solid var(--line)', borderRadius: 8 }} />
+        style={{ flex: 1, minWidth: 160 }} />
       {withType && (
         <select value={type} onChange={(e) => setType(e.target.value as Ctype)}
-          style={{ padding: '8px', border: '1.5px solid var(--line)', borderRadius: 8 }}>
+          style={{ padding: '8px 10px' }}>
           <option value="text">Текст</option>
           <option value="video">Видео</option>
           <option value="pdf">PDF</option>
@@ -44,11 +53,11 @@ export function InlineAdd({
 
 export function MoveBtns({ i, count, onMove }: { i: number; count: number; onMove: (dir: -1 | 1) => void }) {
   return (
-    <span style={{ display: 'inline-flex', gap: 2 }}>
-      <button className="btn ghost sm" style={{ padding: '2px 7px' }} disabled={i === 0}
-        title="Выше" onClick={() => onMove(-1)}>↑</button>
-      <button className="btn ghost sm" style={{ padding: '2px 7px' }} disabled={i === count - 1}
-        title="Ниже" onClick={() => onMove(1)}>↓</button>
+    <span style={{ display: 'inline-flex', gap: 0, flex: 'none' }}>
+      <button className="btn icon" style={{ padding: 3 }} disabled={i === 0}
+        title="Выше" onClick={() => onMove(-1)}><Icon name="up" size={15} /></button>
+      <button className="btn icon" style={{ padding: 3 }} disabled={i === count - 1}
+        title="Ниже" onClick={() => onMove(1)}><Icon name="down" size={15} /></button>
     </span>
   );
 }
@@ -77,8 +86,7 @@ export function EditableTitle({
         onChange={(e) => setV(e.target.value)}
         onBlur={() => { setEditing(false); if (v.trim() && v !== value) onSave(v.trim()); }}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        style={{ flex: 1, padding: '6px 8px', border: '1.5px solid var(--accent)', borderRadius: 7,
-          font: 'inherit', fontWeight: 700 }}
+        style={{ flex: 1, fontWeight: 700 }}
       />
     );
   }

@@ -36,7 +36,7 @@ export function MaterialForm({
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 10, padding: 12 }}>
+    <div className="pane">
       <label className="field" style={{ marginBottom: 10 }}>
         <span>Тип материала</span>
         <select value={m.content_type} onChange={(e) => setM({ ...m, content_type: e.target.value as any })}>

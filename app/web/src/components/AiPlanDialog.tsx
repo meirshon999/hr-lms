@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ApiError, extractDocument, post } from '../api';
 import { DOC_ACCEPT, useToast } from '../lib';
+import { Icon } from './Icon';
 
 /**
  * ВСЯ ТРАЕКТОРИЯ ИЗ ДОКУМЕНТОВ.
@@ -199,7 +200,7 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
 
         {/* Пока разбирать нечего, правая колонка — это серая подсказка на
             полэкрана. Отдаём всю ширину полям: в них вставляют регламенты. */}
-        <div className={plan || pre ? 'ai-grid' : undefined}>
+        <div className={plan || pre || busy === 'parse' ? 'ai-grid' : undefined}>
           {/* ---------------- слева: документы ---------------- */}
           <div>
             <div className="panel" style={{ marginBottom: 10 }}>
@@ -211,10 +212,13 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
                 onChange={(e) => { const f = e.target.files; if (f?.length) pickDocuments(f, 'train'); }} />
               <button className="btn ghost sm" disabled={busy !== null || phase === 'filling'}
                 onClick={() => trainPick.current?.click()}>
-                {busy === 'doc' ? 'Читаем…' : '📄 Загрузить документы'}
+                {busy === 'doc' ? 'Читаем…' : <><Icon name="upload" /> Загрузить документы</>}
               </button>
               {zone('train').map((f, i) => (
-                <div key={i} className="muted" style={{ fontSize: 12, marginTop: 6 }}>✓ {f.name}</div>
+                <div key={i} className="muted"
+                  style={{ fontSize: 12, marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Icon name="check" size={13} className="done" /> {f.name}
+                </div>
               ))}
               <textarea
                 value={source} rows={zone('train').length ? 4 : 7}
@@ -234,10 +238,13 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
                 onChange={(e) => { const f = e.target.files; if (f?.length) pickDocuments(f, 'pre'); }} />
               <button className="btn ghost sm" disabled={busy !== null || phase === 'filling'}
                 onClick={() => prePick.current?.click()}>
-                {busy === 'doc' ? 'Читаем…' : '📄 Загрузить документы'}
+                {busy === 'doc' ? 'Читаем…' : <><Icon name="upload" /> Загрузить документы</>}
               </button>
               {zone('pre').map((f, i) => (
-                <div key={i} className="muted" style={{ fontSize: 12, marginTop: 6 }}>✓ {f.name}</div>
+                <div key={i} className="muted"
+                  style={{ fontSize: 12, marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Icon name="check" size={13} className="done" /> {f.name}
+                </div>
               ))}
               <textarea
                 value={preSource} rows={zone('pre').length ? 3 : 5}
@@ -270,6 +277,8 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
 
           {/* ---------------- справа: что получилось ---------------- */}
           <div>
+            {busy === 'parse' && <PlanSkeleton />}
+
             {phase === 'filling' && (
               <div className="panel" style={{ marginBottom: 10 }}>
                 <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -304,8 +313,8 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input value={it.title} style={{ flex: 1, fontSize: 13.5 }}
                         onChange={(e) => editPre((p) => { p.items[i].title = e.target.value; })} />
-                      <button className="btn ghost sm" title="Убрать материал"
-                        onClick={() => editPre((p) => { p.items.splice(i, 1); })}>✕</button>
+                      <button className="btn icon danger" title="Убрать материал"
+                        onClick={() => editPre((p) => { p.items.splice(i, 1); })}><Icon name="x" /></button>
                     </div>
                     <textarea value={it.text} rows={3}
                       onChange={(e) => editPre((p) => { p.items[i].text = e.target.value; })}
@@ -332,9 +341,9 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
                         onChange={(e) => edit((p) => { p.blocks[bi].title = e.target.value; })}
                         style={{ fontWeight: 600, flex: 1 }}
                       />
-                      <button className="btn ghost sm" title="Убрать блок целиком"
+                      <button className="btn icon danger" title="Убрать блок целиком"
                         disabled={phase === 'filling'}
-                        onClick={() => edit((p) => { p.blocks.splice(bi, 1); })}>✕</button>
+                        onClick={() => edit((p) => { p.blocks.splice(bi, 1); })}><Icon name="x" /></button>
                     </div>
 
                     {b.lessons.map((l, li) => {
@@ -354,12 +363,12 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
                               onClick={() => setOpen(open === key ? null : key)}>
                               {d ? `✓ ${d.questions.length} вопр.` : '○ пусто'}
                             </button>
-                            <button className="btn ghost sm" title="Убрать урок"
+                            <button className="btn icon danger" title="Убрать урок"
                               disabled={phase === 'filling'}
                               onClick={() => edit((p) => {
                                 p.blocks[bi].lessons.splice(li, 1);
                                 if (p.blocks[bi].lessons.length === 0) p.blocks.splice(bi, 1);
-                              })}>✕</button>
+                              })}><Icon name="x" /></button>
                           </div>
                           {open === key && d && (
                             <div className="panel" style={{ marginTop: 6, fontSize: 12.5 }}>
@@ -446,6 +455,35 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
           <p style={{ color: 'var(--error)', fontSize: 13, marginTop: 10 }}>{err}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Пустой экран на время разбора.
+ *
+ * Первый шаг — самый долгий: модель читает весь документ целиком, и это
+ * десять-пятнадцать секунд тишины. Крутящийся кружок в этом месте ничего
+ * не говорит, а силуэт будущего дерева говорит сразу две вещи: работа идёт
+ * и получится вот такое. Дальше уроки собираются по одному, и там уже
+ * настоящий счётчик, а не догадка.
+ */
+function PlanSkeleton() {
+  return (
+    <div className="panel" style={{ marginBottom: 10 }}>
+      <b style={{ fontSize: 13.5 }}>Читаем документы и ищем разделы…</b>
+      <p className="muted" style={{ fontSize: 12, margin: '3px 0 14px' }}>
+        Это самый долгий шаг: модель читает текст целиком. Дальше уроки пойдут
+        по одному, и их будет видно.
+      </p>
+      {[0, 1].map((b) => (
+        <div key={b} style={{ marginBottom: 14 }}>
+          <div className="skel" style={{ height: 15, width: b ? '48%' : '38%' }} />
+          <div className="skel" style={{ height: 11, width: '82%', marginLeft: 14 }} />
+          <div className="skel" style={{ height: 11, width: '68%', marginLeft: 14 }} />
+          <div className="skel" style={{ height: 11, width: '74%', marginLeft: 14 }} />
+        </div>
+      ))}
     </div>
   );
 }
