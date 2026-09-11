@@ -84,7 +84,9 @@ function run(name) {
     const p = spawn(
       process.execPath,
       ['--import', 'tsx', `scripts/${name}.ts`],
-      { env: { ...process.env, LMS_URL: URL }, stdio: ['ignore', 'pipe', 'pipe'] },
+      // Путь к базе нужен одному набору: он проверяет, что ключ ИИ лежит
+      // в файле зашифрованным, а такое через API не увидишь.
+      { env: { ...process.env, LMS_URL: URL, LMS_TEST_DB: join(dir, 'test.db') }, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let out = '';
     p.stdout.on('data', (d) => { out += d; });

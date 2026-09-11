@@ -1,25 +1,29 @@
 import { getState, setState } from '../db.ts';
+import { isSealed, open, seal } from '../secretbox.ts';
 import {
   ANTHROPIC_API_KEY, ANTHROPIC_MODEL, GROQ_API_KEY, GROQ_BASE_URL, GROQ_MODEL,
-  GROQ_STT_MODEL, STT_LANGUAGE, STT_PROVIDER_ENV, AI_PROVIDER_ENV,
+  AI_PROVIDER_ENV,
 } from '../config.ts';
 
 /**
  * НАСТРОЙКИ ИИ: ключ можно задать и в переменных сервера, и в интерфейсе.
  *
- * Зачем два пути. Переменная окружения — это решение того, кто ставил систему;
- * она безопаснее, потому что ключ не попадает ни в базу, ни в резервные копии.
+ * Зачем два пути. Переменная окружения — это решение того, кто ставил систему.
  * Но добраться до неё может только человек с доступом к серверу, а платить за
- * ИИ будет тот, кто системой пользуется. Поэтому админ может вписать свой ключ
- * прямо в настройках, и тогда серверный не нужен вовсе.
+ * ИИ будет тот, кто системой пользуется. Поэтому ключ можно вписать прямо в
+ * настройках, и тогда серверный не нужен вовсе.
  *
  * Что победит, если заданы оба: **ключ из настроек**. Иначе владелец системы
  * не смог бы перейти на свой ключ, не позвав разработчика, — а ради этого всё
  * и затевалось. Откуда взят действующий ключ, на экране написано.
  *
- * Ключ наружу не отдаётся никогда. В базе он лежит целиком (иначе им нечем
- * пользоваться), но в ответах API от него остаются последние четыре знака —
- * ровно чтобы человек узнал свой ключ и не более того.
+ * Ключ наружу не отдаётся никогда: в ответах API от него остаются последние
+ * четыре знака — ровно чтобы человек узнал свой ключ и не более того.
+ *
+ * В базе ключ лежит зашифрованным на `TOKEN_SECRET` (см. `secretbox.ts`).
+ * Причина простая: продукт переезжает копированием файла базы, и незашифрованный
+ * ключ уехал бы вместе с копией — в резервную копию, к разработчику, куда
+ * угодно. Копия базы без серверной переменной ключа не отдаст.
  */
 
 export type AiProvider = 'off' | 'groq' | 'openai' | 'anthropic';
@@ -33,37 +37,52 @@ export const PROVIDER_INFO: Record<Exclude<AiProvider, 'off'>, {
   openaiCompatible: boolean;
   baseUrl: string;
   defaultModel: string;
-  /** Модель расшифровки речи; пусто — провайдер звук не принимает. */
-  sttModel: string;
   free: boolean;
+  /** Читает ли PDF и картинки как есть, без пересохранения в .docx. */
+  readsPdf: boolean;
   note: string;
+  /** Где человек заводит свой ключ — без этого «вставьте ключ» бесполезный совет. */
+  consoleUrl: string;
+  /** Как ключ начинается: чтобы не вставили не то, что скопировали. */
+  keyPrefix: string;
+  /** Чего ждать по деньгам. Без цифр: тарифы меняются, а зашитая цифра врёт. */
+  price: string;
 }> = {
   groq: {
     title: 'Groq',
     openaiCompatible: true,
     baseUrl: GROQ_BASE_URL,
     defaultModel: GROQ_MODEL,
-    sttModel: GROQ_STT_MODEL,
     free: true,
-    note: 'Бесплатный тариф с лимитами. Умеет расшифровывать речь. Документы не читает.',
+    readsPdf: false,
+    note: 'Бесплатный тариф с дневными лимитами. PDF не читает — документ нужно сохранить как .docx.',
+    consoleUrl: 'https://console.groq.com/keys',
+    keyPrefix: 'gsk_',
+    price: 'Бесплатно. Карту привязывать не нужно.',
   },
   openai: {
     title: 'OpenAI (ChatGPT)',
     openaiCompatible: true,
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4o-mini',
-    sttModel: 'whisper-1',
     free: false,
-    note: 'Платно по расходу. Умеет расшифровывать речь. Названия моделей меняются — если эта не подойдёт, впишите свою.',
+    readsPdf: false,
+    note: 'Платно по расходу. PDF не читает — документ нужно сохранить как .docx.',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+    keyPrefix: 'sk-',
+    price: 'Платно по расходу. Нужна карта и пополненный баланс в кабинете.',
   },
   anthropic: {
     title: 'Claude',
     openaiCompatible: false,
     baseUrl: '',
     defaultModel: ANTHROPIC_MODEL,
-    sttModel: '',
     free: false,
-    note: 'Платно по расходу. Читает PDF и картинки. Звук не принимает — для диктовки нужен ключ Groq или OpenAI.',
+    readsPdf: true,
+    note: 'Платно по расходу. Читает PDF как есть — даже скан, где текста в файле нет.',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+    keyPrefix: 'sk-ant-',
+    price: 'Платно по расходу. Нужна карта и пополненный баланс в кабинете.',
   },
 };
 
@@ -73,27 +92,38 @@ export interface AiSettings {
   model: string;
   baseUrl: string;
   openaiCompatible: boolean;
-  sttModel: string;
-  sttLanguage: string;
   /** Откуда взят действующий ключ. */
   source: 'settings' | 'env' | 'none';
+  /**
+   * Ключ в базе есть, но расшифровать его не вышло: база приехала с другого
+   * сервера или сменили `TOKEN_SECRET`. Не поломка — так и задумано, но
+   * человеку надо сказать, почему ИИ вдруг молчит.
+   */
+  keyUnreadable: boolean;
 }
 
 const OFF: AiSettings = {
   provider: 'off', apiKey: '', model: '', baseUrl: '', openaiCompatible: false,
-  sttModel: '', sttLanguage: STT_LANGUAGE, source: 'none',
+  source: 'none', keyUnreadable: false,
 };
 
 const isProvider = (v: string): v is AiProvider => (PROVIDERS as string[]).includes(v);
 
-/** Настройки из базы, если админ их задал. */
+/** Настройки из базы, если их задали в интерфейсе. */
 function fromDb(): AiSettings | null {
   const provider = (getState('ai.provider') ?? '').trim();
   if (!provider || !isProvider(provider)) return null;
   if (provider === 'off') return { ...OFF, source: 'settings' };
 
-  const apiKey = (getState('ai.api_key') ?? '').trim();
-  if (!apiKey) return null; // выбран провайдер, но ключа нет — считаем, что не настроено
+  const stored = getState('ai.api_key');
+  if (!stored) return null; // выбран провайдер, но ключа нет — считаем, что не настроено
+
+  // Старые базы могли хранить ключ открытым — принимаем и их, но при первой же
+  // записи он ляжет зашифрованным.
+  const apiKey = (isSealed(stored) ? open(stored) : stored)?.trim() ?? '';
+  if (!apiKey) {
+    return { ...OFF, provider, source: 'settings', keyUnreadable: true };
+  }
 
   const info = PROVIDER_INFO[provider];
   return {
@@ -102,9 +132,8 @@ function fromDb(): AiSettings | null {
     model: (getState('ai.model') ?? '').trim() || info.defaultModel,
     baseUrl: info.baseUrl,
     openaiCompatible: info.openaiCompatible,
-    sttModel: info.sttModel,
-    sttLanguage: STT_LANGUAGE,
     source: 'settings',
+    keyUnreadable: false,
   };
 }
 
@@ -130,44 +159,30 @@ function fromEnv(): AiSettings {
     model: pick === 'anthropic' ? ANTHROPIC_MODEL : GROQ_MODEL,
     baseUrl: info.baseUrl,
     openaiCompatible: info.openaiCompatible,
-    sttModel: info.sttModel,
-    sttLanguage: STT_LANGUAGE,
     source: 'env',
+    keyUnreadable: false,
   };
 }
 
 /**
  * Действующие настройки. Читаются на каждый запрос, а не один раз при старте:
- * админ меняет ключ в интерфейсе, и перезапускать ради этого сервер было бы
+ * ключ меняют в интерфейсе, и перезапускать ради этого сервер было бы
  * издевательством.
  */
 export function aiSettings(): AiSettings {
   return fromDb() ?? fromEnv();
 }
 
-/** Настройки расшифровки речи. Отдельно, потому что звук принимают не все. */
-export function sttSettings(): { enabled: boolean; provider: string; model: string; language: string } {
-  const s = aiSettings();
-  // Явное «выключено» переменной сервера уважаем при любом провайдере.
-  if (STT_PROVIDER_ENV === 'off') {
-    return { enabled: false, provider: 'off', model: '', language: s.sttLanguage };
-  }
-  if (!s.apiKey || !s.sttModel) {
-    return { enabled: false, provider: 'off', model: '', language: s.sttLanguage };
-  }
-  return { enabled: true, provider: s.provider, model: s.sttModel, language: s.sttLanguage };
-}
-
 export interface SavePatch {
   provider: AiProvider;
-  /** Пусто — прежний ключ остаётся; так админ может сменить модель, не трогая ключ. */
+  /** Пусто — прежний ключ остаётся; так меняют модель, не трогая ключ. */
   api_key?: string;
   model?: string;
 }
 
 export function saveAiSettings(p: SavePatch) {
   setState('ai.provider', p.provider);
-  if (p.api_key !== undefined && p.api_key.trim()) setState('ai.api_key', p.api_key.trim());
+  if (p.api_key !== undefined && p.api_key.trim()) setState('ai.api_key', seal(p.api_key.trim()));
   if (p.provider === 'off') setState('ai.api_key', '');
   if (p.model !== undefined) setState('ai.model', p.model.trim());
 }

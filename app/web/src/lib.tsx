@@ -124,3 +124,11 @@ export const fmtDate = (d?: string | null) =>
 export const STAGE_LABEL: Record<string, string> = {
   intern: 'Стажировка', onboarding: 'Онбординг', completed: 'Завершил', archived: 'Архив',
 };
+
+/**
+ * Какие файлы принимает окно разбора документа. PDF появляется в списке только
+ * на ключе Claude: остальные провайдеры его не читают, и предлагать формат,
+ * который потом отвергнут, — это обман на ровном месте.
+ */
+export const DOC_ACCEPT = (readsPdf?: boolean) =>
+  readsPdf ? '.docx,.txt,.md,.pdf' : '.docx,.txt,.md';

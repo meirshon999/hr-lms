@@ -64,27 +64,6 @@ export interface Uploaded {
  * onProgress работает через XHR: у fetch прогресса отправки нет.
  */
 /**
- * Надиктованное — в текст. Запись никуда не сохраняется: она живёт ровно столько,
- * сколько идёт расшифровка.
- */
-export async function transcribeAudio(blob: Blob, filename = 'speech.webm'): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', blob, filename);
-  const t = token();
-  const res = await fetch(BASE + '/ai/transcribe', {
-    method: 'POST',
-    headers: t ? { authorization: `Bearer ${t}` } : {},
-    body: fd,
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const e = (data as any)?.error;
-    throw new ApiError(res.status, e?.code ?? 'stt_failed', e?.message ?? 'Не удалось расшифровать');
-  }
-  return (data as any).text as string;
-}
-
-/**
  * Документ Word или текстовый файл — в текст. Файл на сервере не остаётся:
  * человек увидит разобранный текст в поле и сможет поправить его до того,
  * как что-то уйдёт модели.

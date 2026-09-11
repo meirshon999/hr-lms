@@ -238,6 +238,22 @@ CREATE TABLE IF NOT EXISTS ai_block_drafts (
   created_at TEXT NOT NULL
 );
 
+/* Расход ИИ. Платит тот, чей ключ вставлен, а счёт видно только в кабинете
+   провайдера — и то в конце месяца. Здесь считаем сами, чтобы человек знал
+   цену до счёта. Строка на каждое обращение: они редкие, гигабайтов не будет. */
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id       TEXT PRIMARY KEY,
+  ts       TEXT NOT NULL,
+  actor    TEXT NOT NULL,
+  action   TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model    TEXT NOT NULL,
+  tokens_in  INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  ok       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_ts ON ai_usage(ts);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   ts          TEXT NOT NULL,
@@ -285,7 +301,7 @@ export function migrate() {
 /** Полный сброс: удаляет все данные (только тестовый сервер). */
 export function wipe() {
   const tables = [
-    'audit_log', 'ai_drafts', 'ai_block_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
+    'audit_log', 'ai_usage', 'ai_drafts', 'ai_block_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lesson_locations', 'lessons', 'blocks',
     'pre_onboarding_items', 'trajectories', 'positions', 'locations', 'users',
     'app_state', 'files',

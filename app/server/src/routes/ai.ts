@@ -5,10 +5,9 @@ import { authRequired, err } from '../auth.ts';
 import { audit } from '../audit.ts';
 import { stamp } from '../clock.ts';
 import { contentSlot } from '../content.ts';
-import { AiError, aiInfo, aiUnavailableReason } from '../ai/provider.ts';
-import { sttInfo, transcribe } from '../ai/transcribe.ts';
-import { MAX_AUDIO_MB, MAX_DOC_MB } from '../config.ts';
-import { DocError, extractDocument } from '../docx.ts';
+import { AiError, aiInfo, aiUnavailableReason, readPdf } from '../ai/provider.ts';
+import { MAX_DOC_MB } from '../config.ts';
+import { DocError, extractDocument, headingsOf } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 import { buildTrajectoryPlan, PlanSchema, sourceFor, type Section } from '../ai/plan.ts';
 import {
@@ -34,47 +33,7 @@ export default async function aiRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authRequired('hr', 'admin'));
 
   /** Интерфейс спрашивает это, чтобы не показывать кнопки там, где их нечем обслужить. */
-  app.get('/ai/status', async () => ({ ...aiInfo(), stt: sttInfo() }));
-
-  /**
-   * Надиктованное — в текст. Ничего не сохраняем: запись нужна ровно на то время,
-   * пока идёт расшифровка. Голос сотрудника хранить незачем.
-   */
-  app.post('/ai/transcribe', async (req: any, reply) => {
-    // Без перехвата запрос не той формы отдаёт 406 от самого фреймворка —
-    // клиент получил бы невнятную ошибку вместо понятной причины.
-    let part: any;
-    try {
-      part = await req.file();
-    } catch {
-      return reply.code(400).send(err('no_file', 'Запись не передана'));
-    }
-    if (!part) return reply.code(400).send(err('no_file', 'Запись не передана'));
-
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const chunk of part.file) {
-      size += chunk.length;
-      if (size > MAX_AUDIO_MB * 1024 * 1024) {
-        return reply.code(413).send(err('too_large', `Запись больше ${MAX_AUDIO_MB} МБ — говорите короче`));
-      }
-      chunks.push(chunk);
-    }
-
-    try {
-      const text = await transcribe(Buffer.concat(chunks), part.filename || 'speech.webm');
-      return { text };
-    } catch (e) {
-      if (e instanceof AiError) {
-        const status = e.code === 'stt_disabled' ? 503
-          : e.code === 'stt_rate_limited' ? 429
-          : e.code === 'stt_too_large' ? 413 : 502;
-        return reply.code(status).send(err(e.code, e.message));
-      }
-      app.log.error(e);
-      return reply.code(502).send(err('stt_failed', 'Не удалось расшифровать запись'));
-    }
-  });
+  app.get('/ai/status', async () => aiInfo());
 
   /**
    * Документ — в текст. Файл не сохраняем: он нужен ровно на время разбора,
@@ -100,8 +59,30 @@ export default async function aiRoutes(app: FastifyInstance) {
       chunks.push(chunk);
     }
 
+    const name = (part.filename || '').toLowerCase();
+    const body = Buffer.concat(chunks);
+
+    // PDF читает сама модель: свой разбор не берёт ни сканы, ни сложную вёрстку,
+    // а регламент, распечатанный и отсканированный, — обычное дело.
+    if (name.endsWith('.pdf')) {
+      try {
+        const r = await readPdf(body, actor(req));
+        if (!r.text) return reply.code(422).send(err('doc_empty', 'В документе не нашлось текста'));
+        return { text: r.text, headings: headingsOf(r.text), kind: 'pdf', chars: r.text.length };
+      } catch (e) {
+        if (e instanceof AiError) {
+          const status = e.code === 'doc_pdf' ? 422
+            : e.code === 'ai_bad_key' ? 422
+              : e.code === 'ai_rate_limited' ? 429 : 502;
+          return reply.code(status).send(err(e.code, e.message));
+        }
+        app.log.error(e);
+        return reply.code(502).send(err('doc_failed', 'Не удалось прочитать PDF'));
+      }
+    }
+
     try {
-      const r = extractDocument(Buffer.concat(chunks), part.filename || '');
+      const r = extractDocument(body, part.filename || '');
       if (!r.text) {
         return reply.code(422).send(err('doc_empty', 'В документе не нашлось текста'));
       }
@@ -146,6 +127,7 @@ export default async function aiRoutes(app: FastifyInstance) {
     try {
       const r = await buildTrajectoryPlan(p.data.source_text, {
         positionName: pos?.name ?? 'сотрудник',
+        actor: actor(req),
       });
       run(
         `INSERT INTO ai_plans (id, trajectory_id, source_text, sections_json, plan_json, provider, model, created_by, created_at)
@@ -312,6 +294,7 @@ export default async function aiRoutes(app: FastifyInstance) {
         lessons: lessons.map((l) => ({ title: l.title, material: l.text_body ?? '' })),
         askedInLessons: asked,
         count: p.data.count ?? suggestedCount(lessons.length),
+        actor: actor(req),
       });
 
       run(
@@ -431,7 +414,8 @@ export default async function aiRoutes(app: FastifyInstance) {
     if ('error' in slot) return reply.code(422).send(err('bad_location', slot.error));
 
     try {
-      const result = await buildLessonDraft(p.data.source_text, lessonContext(lessonId, slot.location));
+      const result = await buildLessonDraft(
+        p.data.source_text, { ...lessonContext(lessonId, slot.location), actor: actor(req) });
 
       run(
         `INSERT INTO ai_drafts (id, lesson_id, location_id, source_text, draft_json, provider, model, created_by, created_at)

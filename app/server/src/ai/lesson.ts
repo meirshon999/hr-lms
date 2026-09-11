@@ -100,6 +100,8 @@ export interface DraftContext {
   positionName?: string | null;
   /** Точка, если урок точечный: тогда в тексте уместны её особенности. */
   locationName?: string | null;
+  /** Кто нажал кнопку — нужно только счётчику расхода. */
+  actor?: string;
 }
 
 export async function buildLessonDraft(source: string, ctx: DraftContext) {
@@ -140,6 +142,8 @@ export async function buildLessonDraft(source: string, ctx: DraftContext) {
     schema: DraftSchema,
     shape: SHAPE,
     jsonSchema: DRAFT_JSON_SCHEMA,
+    action: 'lesson',
+    actor: ctx.actor,
   });
 
   // Проверка формы уже прошла в слое провайдера, но верный ответ мог указать

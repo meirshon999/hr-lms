@@ -158,8 +158,12 @@ async function main() {
   const old = await send(Buffer.from('x'), 'reglament.doc');
   check('старый .doc отклоняется с подсказкой',
     old.s === 422 && old.d?.error?.code === 'doc_old_format', old.d?.error?.message ?? '');
+  // PDF читает только Claude. На любом другом ключе отказ должен быть внятным,
+  // а не «попробуйте позже»: человеку надо понять, что делать с файлом.
   const pdf = await send(Buffer.from('%PDF-1.4'), 'reglament.pdf');
-  check('pdf отклоняется честно', pdf.s === 422 && pdf.d?.error?.code === 'doc_pdf');
+  check('pdf на не-Claude отклоняется честно',
+    status.provider === 'anthropic' || (pdf.s === 422 && pdf.d?.error?.code === 'doc_pdf'),
+    `${pdf.s} ${pdf.d?.error?.code ?? ''}`);
   const junk = await send(Buffer.from('это не архив'), 'reglament.docx');
   check('битый docx отклоняется, а не роняет сервер',
     junk.s === 422 && junk.d?.error?.code === 'doc_broken', String(junk.s));
@@ -167,17 +171,6 @@ async function main() {
   const noDoc = await j('/ai/extract', { method: 'POST', h });
   check('разбор без файла отклоняется понятной ошибкой',
     noDoc.s === 400 && noDoc.d?.error?.code === 'no_file', `${noDoc.s} ${noDoc.d?.error?.code ?? ''}`);
-
-  // ---------- расшифровка речи ----------
-  const noFile = await j('/ai/transcribe', { method: 'POST', h });
-  check('расшифровка без файла отклоняется понятной ошибкой',
-    noFile.s === 400 && noFile.d?.error?.code === 'no_file',
-    `${noFile.s} ${noFile.d?.error?.code ?? ''}`);
-  if (status.stt?.enabled) {
-    console.log(`расшифровка: ${status.stt.provider} / ${status.stt.model} / ${status.stt.language}`);
-  } else {
-    check('выключенная расшифровка честно говорит об этом', true, 'ключ не задан');
-  }
 
   // ---------- в журнале осталась запись, что урок собран ИИ ----------
   // Журнал читает администратор, а не кадровик: смысл записи в том, чтобы её

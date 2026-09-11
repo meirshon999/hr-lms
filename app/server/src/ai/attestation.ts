@@ -95,6 +95,8 @@ export interface AttestationContext {
   askedInLessons: string[];
   /** Сколько вопросов нужно. */
   count: number;
+  /** Кто нажал кнопку — нужно только счётчику расхода. */
+  actor?: string;
 }
 
 export async function buildAttestationDraft(ctx: AttestationContext) {
@@ -131,6 +133,8 @@ export async function buildAttestationDraft(ctx: AttestationContext) {
       + 'Вопросы не должны совпадать с уже заданными в уроках ни по формулировке, ни по сути.',
     jsonSchema: JSON_SCHEMA,
     maxTokens: 16000,
+    action: 'attestation',
+    actor: ctx.actor,
   });
 
   for (const q of result.data.questions) {

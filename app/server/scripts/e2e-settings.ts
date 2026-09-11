@@ -1,5 +1,7 @@
 /* Настройки ИИ: свой ключ через интерфейс, выключение и защита ключа.
      npx tsx scripts/e2e-settings.ts                                         */
+import { readFileSync } from 'node:fs';
+
 const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
 
 async function j(p: string, o: any = {}): Promise<{ s: number; d: any }> {
@@ -30,10 +32,8 @@ async function main() {
   const adm = { authorization: `Bearer ${admT}` };
   const hr = { authorization: `Bearer ${hrT}` };
 
-  // ---------- ключ — дело админа, не кадровика ----------
-  check('кадровик не видит настройки', (await j('/settings/ai', { h: hr })).s === 403);
-  check('кадровик не может задать ключ',
-    (await j('/settings/ai', { method: 'PUT', h: hr, body: { provider: 'groq', api_key: FAKE } })).s === 403);
+  // ---------- ключ вставляет тот, кто платит: и кадровик, и админ ----------
+  check('кадровик видит настройки', (await j('/settings/ai', { h: hr })).s === 200);
   check('без входа настройки недоступны', (await j('/settings/ai')).s === 401);
 
   const before = await j('/settings/ai', { h: adm });
@@ -42,9 +42,12 @@ async function main() {
     (before.d.providers ?? []).length >= 3
     && before.d.providers.every((p: any) => p.title && p.note),
     (before.d.providers ?? []).map((p: any) => p.key).join(', '));
-  check('видно, у кого есть расшифровка речи',
-    before.d.providers.find((p: any) => p.key === 'anthropic')?.speech === false
-    && before.d.providers.find((p: any) => p.key === 'groq')?.speech === true);
+  check('сказано, где взять ключ и как он начинается',
+    before.d.providers.every((p: any) => /^https:\/\//.test(p.console_url) && p.key_prefix && p.price),
+    JSON.stringify(before.d.providers?.[0] ?? {}));
+  check('видно, кто читает PDF',
+    before.d.providers.find((p: any) => p.key === 'anthropic')?.reads_documents === true
+    && before.d.providers.find((p: any) => p.key === 'groq')?.reads_documents === false);
 
   const wasSource = before.d.source;
   const wasProvider = before.d.provider;
@@ -55,6 +58,15 @@ async function main() {
   check('провайдер без ключа не включается',
     canKeep || (noKey.s === 422 && noKey.d?.error?.code === 'no_key'),
     `${noKey.s} ${noKey.d?.error?.code ?? ''}`);
+
+  // ---------- ключ не от того провайдера ловится сразу ----------
+  const wrong = await j('/settings/ai', {
+    method: 'PUT', h: adm, body: { provider: 'anthropic', api_key: 'gsk_groqключиктакненачинаются' },
+  });
+  check('ключ не от того провайдера не принимается',
+    wrong.s === 422 && wrong.d?.error?.code === 'wrong_key', `${wrong.s} ${wrong.d?.error?.code ?? ''}`);
+  check('в отказе написано, с чего начинается верный ключ',
+    /sk-ant-/.test(wrong.d?.error?.message ?? ''), wrong.d?.error?.message ?? '');
 
   // ---------- свой ключ через интерфейс ----------
   const set = await j('/settings/ai', {
@@ -73,6 +85,24 @@ async function main() {
   check('от ключа видны только последние знаки',
     after.key_hint === '…mnop', after.key_hint);
 
+  // ---------- ключа нет в файле базы открытым текстом ----------
+  // Главная причина шифровать: продукт переезжает копированием файла базы,
+  // и незашифрованный ключ уехал бы вместе с копией.
+  const dbPath = process.env.LMS_TEST_DB;
+  if (dbPath) {
+    // Свежая запись может ещё лежать в журнале SQLite, а не в самом файле, —
+    // смотреть только .db значит проверять пустоту и радоваться.
+    const raw = Buffer.concat(
+      [dbPath, `${dbPath}-wal`, `${dbPath}-journal`]
+        .map((f) => { try { return readFileSync(f); } catch { return Buffer.alloc(0); } }),
+    );
+    check('в файле базы ключа открытым текстом нет', !raw.includes(FAKE));
+    check('ключ в базе всё-таки есть — зашифрованным', raw.includes('v1:'),
+      `осмотрено ${raw.length} байт`);
+  } else {
+    console.log('(проверка файла базы пропущена: LMS_TEST_DB не задан)');
+  }
+
   // ---------- журнал помнит, но ключа в нём нет ----------
   const log = JSON.stringify((await j('/audit?limit=20', { h: adm })).d);
   check('изменение настроек записано в журнал', log.includes('ai_settings'));
@@ -87,12 +117,28 @@ async function main() {
   check('новая модель сохранилась',
     (await j('/settings/ai', { h: adm })).d.model === 'gpt-4o');
 
+  // ---------- кадровик тоже может вставить свой ключ ----------
+  const byHr = await j('/settings/ai', {
+    method: 'PUT', h: hr, body: { provider: 'openai', api_key: FAKE, model: 'gpt-4o-mini' },
+  });
+  check('кадровик может задать свой ключ', byHr.s === 200, JSON.stringify(byHr.d));
+  check('в журнале видно, кто именно менял настройку',
+    JSON.stringify((await j('/audit?limit=5', { h: adm })).d).includes('"hr"'));
+
+  // ---------- расход виден тому, кто платит ----------
+  const usage = (await j('/settings/ai', { h: adm })).d.usage;
+  check('счётчик расхода отдаётся',
+    usage && typeof usage.calls === 'number' && typeof usage.tokens_in === 'number',
+    JSON.stringify(usage ?? null));
+  check('у видов работы есть человеческие названия',
+    !!usage?.titles?.lesson && !!usage?.titles?.pdf, JSON.stringify(usage?.titles ?? {}));
+
   // ---------- статус для интерфейса согласован с настройками ----------
   const status = (await j('/ai/status', { h: hr })).d;
   check('кадровик видит статус ИИ, но не ключ',
     status.provider === 'openai' && !JSON.stringify(status).includes(FAKE),
     status.provider);
-  check('у OpenAI диктовка доступна', status.stt?.enabled === true, JSON.stringify(status.stt));
+  check('у OpenAI PDF не обещают', status.reads_documents === false, JSON.stringify(status.reads_documents));
 
   // ---------- выключение ----------
   const off = await j('/settings/ai', { method: 'PUT', h: adm, body: { provider: 'off' } });
@@ -100,7 +146,6 @@ async function main() {
 
   const offStatus = (await j('/ai/status', { h: hr })).d;
   check('выключенный ИИ так и говорит', offStatus.enabled === false, JSON.stringify(offStatus));
-  check('диктовка тоже выключается', offStatus.stt?.enabled === false);
   check('сборка урока отвечает 503, а не падает',
     (await j('/ai/lessons/нет-такого/draft', {
       method: 'POST', h: hr, body: { source_text: 'x'.repeat(600) },
@@ -108,9 +153,9 @@ async function main() {
   check('разбор документа тоже 503', (await j('/ai/extract', { method: 'POST', h: hr })).s === 503
     || (await j('/ai/extract', { method: 'POST', h: hr })).s === 400);
 
-  // ---------- сброс к серверным настройкам ----------
+  // ---------- убрать свой ключ перед передачей системы ----------
   const cleared = await j('/settings/ai', { method: 'DELETE', h: adm });
-  check('сброс возвращает к настройкам сервера',
+  check('ключ убирается, остаются настройки сервера',
     cleared.s === 200 && cleared.d.source !== 'settings', JSON.stringify(cleared.d));
 
   const restored = (await j('/ai/status', { h: hr })).d;

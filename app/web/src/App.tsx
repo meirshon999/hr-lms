@@ -56,7 +56,7 @@ export function App() {
           <Route path="/hr/constructor" element={<Constructor />} />
           <Route path="/hr/constructor/:positionId" element={<Constructor />} />
           {isAdmin && <Route path="/hr/accounts" element={<Accounts />} />}
-          {isAdmin && <Route path="/hr/settings" element={<Settings />} />}
+          <Route path="/hr/settings" element={<Settings />} />
         </Route>
       </>}
 

@@ -82,17 +82,6 @@ export const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? '').trim();
  */
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-sonnet-5';
 
-/**
- * РАСШИФРОВКА РЕЧИ включается сама, если у действующего провайдера есть модель
- * для звука. Отдельная переменная нужна ровно для одного: выключить диктовку,
- * не выключая сборку уроков. У Claude входа для звука нет вовсе, поэтому при
- * нём микрофон не появится независимо от этой переменной.
- */
-export const STT_PROVIDER_ENV = (process.env.LMS_STT_PROVIDER ?? '').toLowerCase().trim();
-export const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL ?? 'whisper-large-v3';
-/** Язык материалов сети. Указанный язык заметно поднимает точность расшифровки. */
-export const STT_LANGUAGE = process.env.LMS_STT_LANGUAGE ?? 'ru';
-export const MAX_AUDIO_MB = Number(process.env.LMS_MAX_AUDIO_MB ?? 20);
 /** Регламент в Word — это текст: даже сотня страниц весит меньше мегабайта. */
 export const MAX_DOC_MB = Number(process.env.LMS_MAX_DOC_MB ?? 10);
 

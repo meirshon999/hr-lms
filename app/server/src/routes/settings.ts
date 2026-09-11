@@ -3,27 +3,28 @@ import { z } from 'zod';
 import { authRequired, err } from '../auth.ts';
 import { audit } from '../audit.ts';
 import { AiError, aiInfo, testConnection } from '../ai/provider.ts';
-import { sttInfo } from '../ai/transcribe.ts';
 import {
   aiSettings, clearAiSettings, keyHint, PROVIDER_INFO, saveAiSettings,
 } from '../ai/settings.ts';
+import { ACTION_TITLE, usageSummary } from '../ai/usage.ts';
 
 /**
- * НАСТРОЙКИ ИИ — только для администратора.
+ * НАСТРОЙКИ ИИ — кадровику и администратору.
  *
- * Почему не для кадровика, хотя пользуется ИИ именно он: ключ это деньги.
- * Кто его вставил, тот и платит по счёту провайдера, а на платном тарифе
- * чужой ключ — это чужой счёт. Кадровик работает с людьми и содержанием,
- * доступы и расходы — не его зона.
+ * Почему обоим, хотя ключ это деньги: платит за ИИ тот, кто им пользуется, и
+ * в сети из трёх точек это один и тот же человек. Требовать администратора
+ * ради вставки ключа значит гарантировать, что ИИ не включат вовсе.
+ * Кто именно менял настройку, видно в журнале действий — он у администратора.
  *
  * Ключ наружу не отдаётся никогда: в ответах от него остаются последние
- * четыре знака, чтобы человек узнал свой и не более того.
+ * четыре знака, чтобы человек узнал свой и не более того. В базе он лежит
+ * зашифрованным (`secretbox.ts`) — копия базы чужой ключ не выдаст.
  */
 
 const actor = (req: any) => req?.user?.login ?? 'system';
 
 export default async function settingsRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authRequired('admin'));
+  app.addHook('preHandler', authRequired('hr', 'admin'));
 
   app.get('/settings/ai', async () => {
     const s = aiSettings();
@@ -32,19 +33,24 @@ export default async function settingsRoutes(app: FastifyInstance) {
       model: s.provider === 'off' ? '' : s.model,
       has_key: !!s.apiKey,
       key_hint: keyHint(s.apiKey),
-      /** `env` — ключ задан на сервере, менять его отсюда бессмысленно. */
+      /** `env` — ключ задан на сервере переменной окружения. */
       source: s.source,
+      /** Ключ в базе есть, но он с другого сервера — расшифровать нечем. */
+      key_unreadable: s.keyUnreadable,
       ai: aiInfo(),
-      stt: sttInfo(),
-      /** Что можно выбрать и чем провайдеры отличаются — чтобы не гадать. */
+      /** Сколько ИИ уже потратил: тому, кто платит своим ключом, это важно. */
+      usage: { ...usageSummary(), titles: ACTION_TITLE },
+      /** Что можно выбрать, чем отличаются и где взять ключ — чтобы не гадать. */
       providers: Object.entries(PROVIDER_INFO).map(([key, v]) => ({
         key,
         title: v.title,
         default_model: v.defaultModel,
         free: v.free,
-        speech: !!v.sttModel,
-        reads_documents: key === 'anthropic',
+        reads_documents: v.readsPdf,
         note: v.note,
+        console_url: v.consoleUrl,
+        key_prefix: v.keyPrefix,
+        price: v.price,
       })),
     };
   });
@@ -59,12 +65,21 @@ export default async function settingsRoutes(app: FastifyInstance) {
     if (!p.success) return reply.code(400).send(err('bad_request', 'Проверьте поля'));
 
     const had = aiSettings();
+    const key = (p.data.api_key ?? '').trim();
     if (p.data.provider !== 'off') {
-      const key = (p.data.api_key ?? '').trim();
       // Ключа нет ни нового, ни прежнего — включать нечего.
       const keepsOld = had.source === 'settings' && had.provider === p.data.provider && had.apiKey;
       if (!key && !keepsOld) {
         return reply.code(422).send(err('no_key', 'Нужен ключ провайдера'));
+      }
+      // Вставили не тот ключ — типичная ошибка, и провайдер сообщит о ней
+      // невнятным 401 через минуту. Дешевле сказать сразу.
+      const prefix = PROVIDER_INFO[p.data.provider].keyPrefix;
+      if (key && !key.startsWith(prefix)) {
+        return reply.code(422).send(err(
+          'wrong_key',
+          `Это не похоже на ключ ${PROVIDER_INFO[p.data.provider].title}: он начинается с «${prefix}»`,
+        ));
       }
     }
 
@@ -77,10 +92,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return { provider: s.provider, model: s.model, has_key: !!s.apiKey, source: s.source };
   });
 
-  /** Вернуться к тому, что задано на сервере переменными окружения. */
+  /**
+   * Убрать свой ключ. Отдельная кнопка, а не «сохранить пустое поле»: это
+   * то, что делают перед передачей системы другому владельцу, и оно должно
+   * называться своим именем. После неё действует то, что задано на сервере.
+   */
   app.delete('/settings/ai', async (req) => {
     clearAiSettings();
-    audit(actor(req), 'ai_settings', null, 'сброшены к серверным');
+    audit(actor(req), 'ai_settings', null, 'ключ удалён, вернулись к серверным');
     const s = aiSettings();
     return { provider: s.provider, model: s.model, has_key: !!s.apiKey, source: s.source };
   });
@@ -89,9 +108,9 @@ export default async function settingsRoutes(app: FastifyInstance) {
    * Живая проверка. Без неё человек вставляет ключ, закрывает настройки
    * и узнаёт о неверном ключе через неделю, когда впервые нажмёт «Собрать».
    */
-  app.post('/settings/ai/test', async (_req, reply) => {
+  app.post('/settings/ai/test', async (req, reply) => {
     try {
-      return await testConnection();
+      return await testConnection(actor(req));
     } catch (e) {
       if (e instanceof AiError) {
         const status = e.code === 'ai_disabled' ? 503

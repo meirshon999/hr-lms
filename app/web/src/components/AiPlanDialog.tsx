@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { ApiError, extractDocument, post } from '../api';
-import { useToast } from '../lib';
+import { DOC_ACCEPT, useToast } from '../lib';
 
 /**
  * СБОРКА ТРАЕКТОРИИ ИЗ ЦЕЛОГО ДОКУМЕНТА.
@@ -22,9 +22,11 @@ interface PlannedBlock { title: string; lessons: PlannedLesson[] }
 interface Plan { blocks: PlannedBlock[] }
 interface SectionInfo { index: number; title: string; chars: number }
 
-export function AiPlanDialog({ positionId, positionName, onClose, onApplied }: {
+export function AiPlanDialog({ positionId, positionName, readsPdf, onClose, onApplied }: {
   positionId: string;
   positionName: string;
+  /** Провайдер читает PDF сам — тогда и .pdf можно загрузить как есть. */
+  readsPdf?: boolean;
   onClose: () => void;
   onApplied: () => void;
 }) {
@@ -105,7 +107,7 @@ export function AiPlanDialog({ positionId, positionName, onClose, onApplied }: {
               <span>Регламент целиком</span>
               <textarea
                 value={source} rows={16}
-                placeholder="Загрузите файл Word или вставьте текст со всеми заголовками"
+                placeholder={`Загрузите ${readsPdf ? 'файл Word или PDF' : 'файл Word'} или вставьте текст со всеми заголовками`}
                 onChange={(e) => setSource(e.target.value)}
                 style={{ width: '100%', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.5 }}
               />
@@ -113,7 +115,7 @@ export function AiPlanDialog({ positionId, positionName, onClose, onApplied }: {
             <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="muted" style={{ fontSize: 12 }}>{source.trim().length} символов</span>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input ref={filePick} type="file" accept=".docx,.txt,.md" hidden
+                <input ref={filePick} type="file" accept={DOC_ACCEPT(readsPdf)} hidden
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) pickDocument(f); }} />
                 <button className="btn ghost sm" disabled={busy !== null}
                   onClick={() => filePick.current?.click()}>

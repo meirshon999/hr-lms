@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm --prefix server run test",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "handover": "npm --prefix server run handover --"
   },
   "engines": {
     "node": ">=22.13"

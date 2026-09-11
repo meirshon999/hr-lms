@@ -20,9 +20,7 @@ export function HrLayout() {
           {isAdmin && (
             <NavLink to="/hr/accounts" className={({ isActive }) => (isActive ? 'active' : '')}>Аккаунты</NavLink>
           )}
-          {isAdmin && (
-            <NavLink to="/hr/settings" className={({ isActive }) => (isActive ? 'active' : '')}>Настройки</NavLink>
-          )}
+          <NavLink to="/hr/settings" className={({ isActive }) => (isActive ? 'active' : '')}>Настройки</NavLink>
         </div>
         <div className="who">
           <span className="acct">{me?.user.login} · {me?.user.role}</span>

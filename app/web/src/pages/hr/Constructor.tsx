@@ -76,7 +76,8 @@ interface Traj {
 interface Loc { id: string; name: string; city: string | null; }
 interface AiStatus {
   enabled: boolean; provider: string; model: string | null; reason: string | null;
-  stt: { enabled: boolean; provider: string; model: string | null };
+  /** Провайдер читает PDF сам — тогда .pdf можно принимать как есть. */
+  reads_documents: boolean;
 }
 
 function TrajectoryEditor({ positionId, positionName, onChange }: {
@@ -189,6 +190,7 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
         <AiPlanDialog
           positionId={positionId}
           positionName={positionName}
+          readsPdf={!!ai?.reads_documents}
           onClose={() => setPlanning(false)}
           onApplied={refresh}
         />
@@ -266,7 +268,7 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
           <div className="body">
             {b.lessons.map((l: any, li: number) => (
               <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
-                ai={!!ai?.enabled} dictate={!!ai?.stt?.enabled}
+                ai={!!ai?.enabled} readsPdf={!!ai?.reads_documents}
                 i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
             ))}
             <InlineAdd placeholder="Название урока" label="+ урок"
@@ -303,9 +305,9 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   );
 }
 
-function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, dictate }: {
+function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, readsPdf }: {
   lesson: any; onChange: () => void; i: number; count: number; onMove: (dir: -1 | 1) => void;
-  at: string; locations: Loc[]; ai: boolean; dictate: boolean;
+  at: string; locations: Loc[]; ai: boolean; readsPdf: boolean;
 }) {
   const [tab, setTab] = useState<'material' | 'test' | 'scope' | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -346,7 +348,7 @@ function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, d
           lessonTitle={lesson.title}
           locationId={slot}
           locationName={slot ? here : undefined}
-          canDictate={dictate}
+          readsPdf={readsPdf}
           onClose={() => setAiOpen(false)}
           onApplied={() => { setAiOpen(false); onChange(); }}
         />

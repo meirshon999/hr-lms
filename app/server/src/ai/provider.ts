@@ -1,5 +1,6 @@
 import { z, type ZodType } from 'zod';
 import { aiSettings, PROVIDER_INFO, type AiSettings } from './settings.ts';
+import { recordUsage } from './usage.ts';
 
 /**
  * СЛОЙ ПРОВАЙДЕРА ИИ.
@@ -25,10 +26,15 @@ export const aiEnabled = () => aiSettings().provider !== 'off' && !!aiSettings()
 /** Что показать HR, если функция не работает. Причина всегда в настройке. */
 export function aiUnavailableReason(): string | null {
   const s = aiSettings();
+  // Отдельный случай: ключ в базе есть, но он не наш — база приехала с другого
+  // сервера. Молчать нельзя, иначе ИИ «просто не работает» без объяснений.
+  if (s.keyUnreadable) {
+    return 'Сохранённый ключ задан на другом сервере и здесь не читается — вставьте свой в разделе «Настройки»';
+  }
   if (s.provider === 'off') {
     return s.source === 'settings'
       ? 'ИИ выключен в настройках'
-      : 'ИИ не настроен: админ может задать ключ в разделе «Настройки»';
+      : 'ИИ не настроен: вставьте ключ в разделе «Настройки»';
   }
   if (!s.apiKey) return 'ИИ не настроен: нет ключа';
   return null;
@@ -50,12 +56,18 @@ export interface AiRequest<T> {
   /** Пояснения, которые схемой не выразить: сколько вопросов, сколько вариантов. */
   shape: string;
   maxTokens?: number;
+  /** Вид работы и кто её заказал — только для счётчика расхода. */
+  action?: string;
+  actor?: string;
 }
 
 export interface AiResult<T> {
   data: T;
   provider: string;
   model: string;
+  /** Сколько токенов стоило обращение. Провайдер может их не прислать — тогда ноль. */
+  tokensIn: number;
+  tokensOut: number;
 }
 
 export async function generateJson<T>(req: AiRequest<T>): Promise<AiResult<T>> {
@@ -63,15 +75,38 @@ export async function generateJson<T>(req: AiRequest<T>): Promise<AiResult<T>> {
   if (reason) throw new AiError(reason, 'ai_disabled');
 
   const s = aiSettings();
-  if (s.provider === 'anthropic') return viaAnthropic(req, s);
+  const note = (r: AiResult<T> | null, ok: boolean) => recordUsage({
+    actor: req.actor ?? 'system',
+    action: req.action ?? 'lesson',
+    provider: s.provider,
+    model: s.model,
+    tokensIn: r?.tokensIn ?? 0,
+    tokensOut: r?.tokensOut ?? 0,
+    ok,
+  });
 
-  // Имена полей платформа гарантирует, а «не меньше трёх вопросов» — нет: это
-  // ограничение проверяет наша схема. Разовый недобор лечится повтором дешевле,
-  // чем показом ошибки человеку, который ни в чём не виноват.
   try {
-    return await viaOpenAiFormat(req, s);
+    if (s.provider === 'anthropic') {
+      const r = await viaAnthropic(req, s);
+      note(r, true);
+      return r;
+    }
+    // Имена полей платформа гарантирует, а «не меньше трёх вопросов» — нет: это
+    // ограничение проверяет наша схема. Разовый недобор лечится повтором дешевле,
+    // чем показом ошибки человеку, который ни в чём не виноват.
+    let r: AiResult<T>;
+    try {
+      r = await viaOpenAiFormat(req, s);
+    } catch (e) {
+      if (!(e instanceof AiError) || e.code !== 'ai_bad_shape') throw e;
+      // Неудачная попытка провайдеру тоже оплачена — считаем и её.
+      note(null, false);
+      r = await viaOpenAiFormat(req, s);
+    }
+    note(r, true);
+    return r;
   } catch (e) {
-    if (e instanceof AiError && e.code === 'ai_bad_shape') return viaOpenAiFormat(req, s);
+    note(null, false);
     throw e;
   }
 }
@@ -94,7 +129,84 @@ async function viaAnthropic<T>(req: AiRequest<T>, s: AiSettings): Promise<AiResu
 
   // parsed_output пустой, если разобрать не удалось — молча продолжать нельзя.
   if (!response.parsed_output) throw new AiError('Модель вернула ответ не той формы');
-  return { data: response.parsed_output as T, provider: 'anthropic', model: s.model };
+  return {
+    data: response.parsed_output as T,
+    provider: 'anthropic',
+    model: s.model,
+    tokensIn: response.usage?.input_tokens ?? 0,
+    tokensOut: response.usage?.output_tokens ?? 0,
+  };
+}
+
+/**
+ * ЧТЕНИЕ PDF ГЛАЗАМИ МОДЕЛИ.
+ *
+ * Свой разбор PDF мы не пишем: текстовый слой там сжат, разбит на куски по
+ * координатам и у сканов отсутствует вовсе — а регламент, распечатанный и
+ * отсканированный, это ровно тот случай, ради которого всё и нужно. Claude
+ * принимает PDF как есть, вместе с картинками и таблицами, и отдаёт текст.
+ *
+ * Работает только на ключе Claude. У Groq и OpenAI такого приёма нет, и врать
+ * про это нельзя — им мы честно говорим «сохраните как .docx».
+ */
+export async function readPdf(file: Buffer, actor: string): Promise<{ text: string }> {
+  const s = aiSettings();
+  if (s.provider !== 'anthropic') {
+    throw new AiError(
+      'PDF читает только Claude. Сейчас подключён другой провайдер — '
+      + 'откройте документ в Word и сохраните как .docx, либо вставьте текст.',
+      'doc_pdf',
+    );
+  }
+
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: s.apiKey });
+
+  let response;
+  try {
+    response = await client.messages.create({
+      model: s.model,
+      max_tokens: 16000,
+      system:
+        'Ты переносишь документ в текст. Верни только текст документа, без своих '
+        + 'пояснений и без разметки. Заголовки разделов оставляй отдельными строками. '
+        + 'Таблицы переноси строками, значения через « | ». Ничего не придумывай и '
+        + 'ничего не пропускай.',
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: file.toString('base64') },
+          },
+          { type: 'text', text: 'Перенеси этот документ в текст целиком.' },
+        ],
+      }],
+    });
+  } catch (e: any) {
+    recordUsage({ actor, action: 'pdf', provider: s.provider, model: s.model, tokensIn: 0, tokensOut: 0, ok: false });
+    const status = e?.status;
+    if (status === 401 || status === 403) {
+      throw new AiError('Ключ не принят провайдером — проверьте его в настройках', 'ai_bad_key');
+    }
+    if (status === 429) throw new AiError('Лимит провайдера исчерпан — попробуйте позже', 'ai_rate_limited');
+    console.error('[ai] чтение PDF:', e?.message ?? e);
+    throw new AiError('Не удалось прочитать PDF — попробуйте ещё раз или сохраните как .docx', 'doc_failed');
+  }
+
+  recordUsage({
+    actor, action: 'pdf', provider: s.provider, model: s.model,
+    tokensIn: response.usage?.input_tokens ?? 0,
+    tokensOut: response.usage?.output_tokens ?? 0,
+    ok: true,
+  });
+
+  const text = response.content
+    .filter((c): c is { type: 'text'; text: string } & typeof c => c.type === 'text')
+    .map((c) => c.text)
+    .join('\n')
+    .trim();
+  return { text };
 }
 
 // ------------------------------------------------- Groq, OpenAI и им подобные
@@ -195,7 +307,13 @@ async function viaOpenAiFormat<T>(req: AiRequest<T>, s: AiSettings): Promise<AiR
     console.error('[ai] начало ответа:', JSON.stringify(raw).slice(0, 500));
     throw new AiError('Модель вернула ответ не той формы — попробуйте ещё раз', 'ai_bad_shape');
   }
-  return { data: parsed.data, provider: s.provider, model: s.model };
+  return {
+    data: parsed.data,
+    provider: s.provider,
+    model: s.model,
+    tokensIn: json?.usage?.prompt_tokens ?? 0,
+    tokensOut: json?.usage?.completion_tokens ?? 0,
+  };
 }
 
 /** Модели поменьше любят обернуть JSON в ```json — снимаем обёртку. */
@@ -222,7 +340,7 @@ export const aiInfo = () => {
  * Живая проверка ключа. Без неё человек вставляет ключ, закрывает настройки
  * и узнаёт о неверном ключе через неделю, когда впервые нажмёт «Собрать».
  */
-export async function testConnection(): Promise<{ ok: true; provider: string; model: string }> {
+export async function testConnection(actor = 'system'): Promise<{ ok: true; provider: string; model: string }> {
   const s = aiSettings();
   const reason = aiUnavailableReason();
   if (reason) throw new AiError(reason, 'ai_disabled');
@@ -238,6 +356,8 @@ export async function testConnection(): Promise<{ ok: true; provider: string; mo
       required: ['ok'], properties: { ok: { type: 'boolean' } },
     },
     maxTokens: 2000,
+    action: 'test',
+    actor,
   });
   return { ok: true, provider: PROVIDER_INFO[s.provider as 'groq'].title, model: s.model };
 }

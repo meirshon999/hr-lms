@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
-    "test": "node scripts/run-e2e.mjs"
+    "test": "node scripts/run-e2e.mjs",
+    "handover": "tsx scripts/handover.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

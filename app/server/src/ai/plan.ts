@@ -170,6 +170,8 @@ const SYSTEM = `Ты методист сети ресторанов Pingwin Prem
 
 export interface PlanContext {
   positionName: string;
+  /** Кто нажал кнопку — нужно только счётчику расхода. */
+  actor?: string;
 }
 
 export async function buildTrajectoryPlan(source: string, ctx: PlanContext) {
@@ -218,6 +220,8 @@ export async function buildTrajectoryPlan(source: string, ctx: PlanContext) {
     shape: SHAPE,
     jsonSchema: PLAN_JSON_SCHEMA,
     maxTokens: 8000,
+    action: 'plan',
+    actor: ctx.actor,
   });
 
   // Номер несуществующего или пустого раздела схемой не поймать — это уже

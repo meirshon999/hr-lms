@@ -9,7 +9,6 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { CORS_ORIGINS, DEV_TOOLS, IS_PROD, MAX_UPLOAD_MB, PORT } from './config.ts';
 import { aiInfo } from './ai/provider.ts';
-import { sttInfo } from './ai/transcribe.ts';
 import { migrate, one } from './db.ts';
 import { seed } from './seed.ts';
 import { err } from './auth.ts';
@@ -102,8 +101,7 @@ console.log(`  LMS на порту ${PORT}`);
 // входом в систему, а на чужом сервере журнал — единственное, что видно.
 {
   const ai = aiInfo();
-  const stt = sttInfo();
   console.log(ai.enabled
-    ? `  ИИ: ${ai.provider} / ${ai.model} (ключ ${ai.source === 'env' ? 'с сервера' : 'из настроек'}), речь: ${stt.enabled ? stt.model : 'нет'}`
+    ? `  ИИ: ${ai.provider} / ${ai.model} (ключ ${ai.source === 'env' ? 'с сервера' : 'из настроек'})`
     : `  ИИ выключен — ${ai.reason}`);
 }

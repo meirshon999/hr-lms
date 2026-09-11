@@ -175,7 +175,7 @@ export interface ExtractResult {
   text: string;
   /** Заголовки документа по порядку — готовое оглавление для будущей траектории. */
   headings: Array<{ level: number; title: string }>;
-  kind: 'docx' | 'text';
+  kind: 'docx' | 'text' | 'pdf';
 }
 
 /** Читает DOCX целиком: распаковка, разбор, сборка текста с заголовками. */
@@ -210,7 +210,7 @@ export function extractText(file: Buffer): ExtractResult {
   return { text, headings: headingsOf(text), kind: 'text' };
 }
 
-function headingsOf(text: string): Array<{ level: number; title: string }> {
+export function headingsOf(text: string): Array<{ level: number; title: string }> {
   return text.split('\n')
     .map((l) => /^(#{1,6})\s+(.*)$/.exec(l))
     .filter((m): m is RegExpExecArray => !!m)
@@ -230,7 +230,7 @@ export function extractDocument(file: Buffer, filename: string): ExtractResult {
     );
   }
   if (name.endsWith('.pdf')) {
-    throw new DocError('PDF пока не читаем — вставьте текст или загрузите .docx', 'doc_pdf');
+    throw new DocError('PDF читает только Claude — подключите его ключ или сохраните как .docx', 'doc_pdf');
   }
   throw new DocError('Подойдёт .docx, .txt или .md', 'doc_unsupported');
 }
