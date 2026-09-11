@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { all, migrate, wipe } from '../db.ts';
+import { all, migrate, run, wipe } from '../db.ts';
 import { advanceDays, clearOverride, isOverridden, setToday, today } from '../clock.ts';
 import { seed } from '../seed.ts';
 import { isOverdue, tryOpenOnboarding } from '../domain.ts';
@@ -17,6 +17,36 @@ export default async function devRoutes(app: FastifyInstance) {
   const requireAuth = async (req: any, reply: any) => {
     if (!loadUser(req)) return reply.code(401).send(err('unauthorized', 'Нужен вход'));
   };
+
+  /**
+   * ПЕРЕМОТКА ВРЕМЕНИ НА МАТЕРИАЛЕ.
+   *
+   * Доказательство прочтения держится на настоящих часах: чтобы засчитать
+   * пятиминутный текст, надо провести на нём пять минут. Для человека это
+   * и есть смысл, а для сквозной проверки — пять минут простоя на каждый урок.
+   *
+   * Поэтому здесь, и только на тестовом сервере, время можно проставить сразу.
+   * В боевом режиме этого модуля нет вовсе — он не «закрыт правами», а не
+   * зарегистрирован.
+   */
+  app.post('/dev/study', { preHandler: requireAuth }, async (req, reply) => {
+    const p = z.object({
+      employee_id: z.string(),
+      lesson_id: z.string().optional(),
+      seconds: z.number().int().min(0).max(100000).optional(),
+    }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'Нужен employee_id'));
+
+    const sec = p.data.seconds ?? 100000;
+    if (p.data.lesson_id) {
+      run(`UPDATE lesson_progress SET seconds_spent = ?, scroll_pct = 100
+            WHERE employee_id = ? AND lesson_id = ?`, sec, p.data.employee_id, p.data.lesson_id);
+    } else {
+      run('UPDATE lesson_progress SET seconds_spent = ?, scroll_pct = 100 WHERE employee_id = ?',
+        sec, p.data.employee_id);
+    }
+    return { ok: true, seconds: sec };
+  });
 
   /** Список аккаунтов с паролями для экрана входа. Только тестовый сервер. */
   app.get('/demo/accounts', async () => {

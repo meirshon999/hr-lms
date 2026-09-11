@@ -8,6 +8,7 @@ import { all, one, run, uuid } from '../db.ts';
 import { authRequired, err, loadUser } from '../auth.ts';
 import { stamp } from '../clock.ts';
 import { audit } from '../audit.ts';
+import { videoDurationSec } from '../mp4.ts';
 
 /** Что разрешаем загружать: видео, PDF и картинки. */
 const ALLOWED: Record<string, string> = {
@@ -54,16 +55,20 @@ export default async function fileRoutes(app: FastifyInstance) {
     }
 
     const size = statSync(path).size;
-    run(`INSERT INTO files (id, orig_name, mime, kind, ext, size_bytes, uploaded_by, created_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
+    // Длительность читаем сразу и храним: потом по ней проверяют, досмотрел ли
+    // человек ролик. Спрашивать её у браузера нельзя — он на стороне того,
+    // кого проверяют.
+    const duration = KIND[mime] === 'video' ? videoDurationSec(path) : null;
+    run(`INSERT INTO files (id, orig_name, mime, kind, ext, size_bytes, uploaded_by, created_at, duration_sec)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       id, part.filename ?? 'файл', mime, KIND[mime], ext, size,
-      (req as any).user?.login ?? 'system', stamp());
+      (req as any).user?.login ?? 'system', stamp(), duration);
     audit((req as any).user?.login ?? 'system', 'upload_file', null,
       `${part.filename} (${(size / 1024 / 1024).toFixed(1)} МБ)`);
 
     return reply.code(201).send({
       id, url: `/api/v1/files/${id}`, kind: KIND[mime],
-      orig_name: part.filename, mime, size_bytes: size,
+      orig_name: part.filename, mime, size_bytes: size, duration_sec: duration,
     });
   });
 

@@ -3,12 +3,20 @@ import { z } from 'zod';
 import { all, one, run, uuid } from '../db.ts';
 import { authRequired, err } from '../auth.ts';
 import { stamp } from '../clock.ts';
+import { beat } from '../study.ts';
 import {
-  allRegularLessonsPassed, canCompleteMaterial, markLessonPassedIfReady,
+  allRegularLessonsPassed, canCompleteMaterial, markLessonPassedIfReady, SCROLL_DONE_PCT,
   recomputePreOnboardingDone, recordAttempt, submitAttestation, tryOpenOnboarding,
 } from '../domain.ts';
 import { attestationBlockOf, findLesson, preSnapshotOf, snapshotOf } from '../snapshot.ts';
 import { myLesson, myTrajectory } from '../serializers.ts';
+
+/** Шаг удара сердца. Больше одного шага за раз не засчитываем. */
+const BEAT_STEP_SEC = 15;
+
+/** «Ещё 40 секунд» человеку понятнее, чем «ещё 0.7 минуты». */
+const aboutMinutes = (sec: number) =>
+  sec >= 90 ? `${Math.ceil(sec / 60)} мин` : `${Math.max(5, Math.ceil(sec / 5) * 5)} сек`;
 
 function emp(req: FastifyRequest, reply: FastifyReply) {
   const u = (req as any).user;
@@ -73,19 +81,39 @@ export default async function meRoutes(app: FastifyInstance) {
     return dto;
   });
 
-  /** Прогресс просмотра видео — считается на сервере, а не на доверии клиенту. */
-  app.post('/me/lessons/:lessonId/video-progress', async (req, reply) => {
+  /**
+   * УДАР СЕРДЦА: «я всё ещё на этой странице, прошло ещё N секунд».
+   *
+   * Заменил собой доверчивый приём процента просмотра. Раньше клиент говорил
+   * «просмотрено 100%», и сервер это записывал — обойти можно было одним
+   * запросом. Теперь присланные секунды режутся по часам сервера: чтобы
+   * накопить десять минут, нужно потратить десять настоящих минут.
+   *
+   * Клиент шлёт удары только когда вкладка открыта и видео играет, но на это
+   * мы не полагаемся — полагаемся на разницу во времени между ударами.
+   */
+  app.post('/me/lessons/:lessonId/beat', async (req, reply) => {
     const e = emp(req, reply); if (!e) return;
     const { lessonId } = req.params as { lessonId: string };
-    const p = z.object({ pct: z.number().int().min(0).max(100) }).safeParse(req.body);
-    if (!p.success) return reply.code(400).send(err('bad_request', 'pct 0–100'));
+    const p = z.object({
+      seconds: z.number().int().min(0).max(120),
+      scroll_pct: z.number().int().min(0).max(100).optional(),
+    }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'seconds 0–120'));
+
     const lp = one<any>('SELECT * FROM lesson_progress WHERE employee_id = ? AND lesson_id = ?', e.id, lessonId);
     if (!lp) return reply.code(404).send(err('not_found', 'Урок не найден'));
     if (lp.status === 'locked') return reply.code(403).send(err('locked', 'Урок ещё закрыт'));
-    if (p.data.pct > (lp.video_pct ?? 0))
-      run('UPDATE lesson_progress SET video_pct = ? WHERE employee_id = ? AND lesson_id = ?',
-        p.data.pct, e.id, lessonId);
-    return { video_pct: Math.max(p.data.pct, lp.video_pct ?? 0) };
+
+    const r = beat(e.id, lessonId, p.data.seconds, p.data.scroll_pct ?? 0, BEAT_STEP_SEC);
+    const gate = canCompleteMaterial(e.id, lessonId);
+    return {
+      seconds_spent: r.seconds_spent,
+      scroll_pct: r.scroll_pct,
+      needed_seconds: gate.need?.seconds ?? 0,
+      need_scroll: gate.need?.scroll ?? false,
+      can_complete: gate.ok,
+    };
   });
 
   app.post('/me/lessons/:lessonId/material-done', async (req, reply) => {
@@ -96,8 +124,21 @@ export default async function meRoutes(app: FastifyInstance) {
     if (lp.status === 'locked') return reply.code(403).send(err('locked', 'Урок ещё закрыт'));
 
     const gate = canCompleteMaterial(e.id, lessonId);
-    if (!gate.ok)
-      return reply.code(422).send(err('video_not_watched', `Досмотрите видео минимум на ${gate.need}%`));
+    if (!gate.ok) {
+      // Человеку говорим, чего именно не хватает: «нельзя» без причины он
+      // прочитает как поломку и пойдёт к кадровику.
+      const left = Math.max(0, (gate.need?.seconds ?? 0) - (gate.spent ?? 0));
+      const needScroll = gate.need?.scroll && (gate.scroll ?? 0) < SCROLL_DONE_PCT;
+      const msg = needScroll && left > 0
+        ? `Дочитайте до конца и побудьте на странице ещё ${aboutMinutes(left)}`
+        : needScroll
+          ? 'Дочитайте материал до конца'
+          : `Побудьте на материале ещё ${aboutMinutes(left)}`;
+      return reply.code(422).send(err('material_not_studied', msg, {
+        seconds_spent: gate.spent, needed_seconds: gate.need?.seconds,
+        scroll_pct: gate.scroll,
+      }));
+    }
 
     run('UPDATE lesson_progress SET material_done = 1 WHERE employee_id = ? AND lesson_id = ?', e.id, lessonId);
     markLessonPassedIfReady(e.id, lessonId);

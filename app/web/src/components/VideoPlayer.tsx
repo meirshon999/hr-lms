@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { post } from '../api';
 
 const isReal = (u: string | null) => !!u && u.startsWith('/api/v1/files/');
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -14,24 +13,23 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
  * назад не должна сбрасывать прогресс, перемотка вперёд не должна его дарить.
  */
 export function VideoPlayer({
-  lessonId, src, minWatchPct, initialPct, onProgress,
+  src, minWatchPct, initialPct, onProgress,
 }: {
-  lessonId: string; src: string | null; minWatchPct: number | null;
+  src: string | null; minWatchPct: number | null;
   initialPct: number; onProgress: (pct: number) => void;
 }) {
   const [pct, setPct] = useState(initialPct);
-  const sent = useRef(initialPct);
   const need = minWatchPct ?? 90;
   const real = isReal(src);
 
-  // отправляем прогресс на сервер каждые ~10% и обязательно в конце
-  useEffect(() => {
-    if (pct - sent.current < 10 && pct < 100) return;
-    sent.current = pct;
-    post(`/me/lessons/${lessonId}/video-progress`, { pct })
-      .then((r: any) => onProgress(r.video_pct))
-      .catch(() => {});
-  }, [pct, lessonId, onProgress]);
+  /*
+   * Процент показываем, но на сервер его не шлём — и это осознанно.
+   *
+   * Раньше слали, и сервер ему верил: один запрос с «100», и ролик считался
+   * просмотренным. Теперь время считает сам сервер по ударам сердца, а этот
+   * процент нужен только для полоски под видео — украшение, а не зачёт.
+   */
+  useEffect(() => { onProgress(pct); }, [pct, onProgress]);
 
   return real
     ? <RealVideo src={src!} pct={pct} need={need} onPct={setPct} />

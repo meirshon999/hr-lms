@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { get, post, ApiError } from '../../api';
 import { useAsync, useBump, ErrorBox, SkeletonLesson, useToast } from '../../lib';
@@ -7,8 +7,14 @@ import { TestRunner } from '../../components/TestRunner';
 import { VideoPlayer } from '../../components/VideoPlayer';
 import { PdfView } from '../../components/PdfView';
 
+interface Study {
+  seconds_spent: number; needed_seconds: number;
+  need_scroll: boolean; scroll_pct: number; can_complete: boolean; why: string;
+}
+
 interface LessonDto {
   id: string; title: string; status: string; material_done: boolean; video_pct: number;
+  study: Study;
   index: number; total: number;
   material: { content_type: 'video' | 'pdf' | 'text'; file_url: string | null; text_body: string | null; min_watch_pct: number | null } | null;
   test: {
@@ -18,6 +24,13 @@ interface LessonDto {
   } | null;
 }
 
+/** Как часто говорим серверу «я всё ещё здесь». Реже — грубее счёт, чаще — зря шумим. */
+const BEAT_SEC = 15;
+
+/** «Ещё 40 секунд» понятнее, чем «ещё 0.7 минуты». */
+const human = (sec: number) =>
+  sec >= 90 ? `${Math.ceil(sec / 60)} мин` : `${Math.max(5, Math.ceil(sec / 5) * 5)} сек`;
+
 export function Lesson() {
   const { id = '' } = useParams();
   const nav = useNavigate();
@@ -26,17 +39,53 @@ export function Lesson() {
   const { data, loading, error, reload } = useAsync(() => get<LessonDto>(`/me/lessons/${id}`), [id]);
 
   const [step, setStep] = useState<'material' | 'test'>('material');
-  const [videoPct, setVideoPct] = useState(0);
-  const [scrolledEnd, setScrolledEnd] = useState(false);
+  const [, setVideoPct] = useState(0);
+  const [study, setStudy] = useState<Study | null>(null);
   const [busy, setBusy] = useState(false);
+  // Прокрутку храним в ref: её читает таймер, а перерисовывать из-за неё нечего.
+  const scroll = useRef(0);
 
   useEffect(() => {
     if (!data) return;
     setVideoPct(data.video_pct);
+    setStudy(data.study);
     setStep(data.material_done && data.test ? 'test' : 'material');
-    // текст засчитывается прокруткой до конца, pdf — открытием; видео идёт по проценту
-    setScrolledEnd(data.material?.content_type === 'video');
+    scroll.current = data.study?.scroll_pct ?? 0;
   }, [data?.id, data?.material_done]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /*
+   * УДАРЫ СЕРДЦА: «я всё ещё здесь».
+   *
+   * Каждые пятнадцать секунд говорим серверу, что материал открыт. Он режет
+   * присланное по своим часам, так что накрутить время нельзя — можно только
+   * потратить его.
+   *
+   * Считаем только когда вкладка видна: человек ушёл в другое окно — время не
+   * идёт. Это не строгость ради строгости, а честность: «сидел с открытой
+   * вкладкой» и «читал» — разные вещи, и первое мы за второе не принимаем.
+   */
+  const lessonId = data?.id;
+  const done = data?.material_done;
+  useEffect(() => {
+    if (!lessonId || done) return;
+    let live = true;
+    const tick = async () => {
+      if (!live || document.hidden) return;
+      try {
+        const r = await post<Study & { can_complete: boolean }>(
+          `/me/lessons/${lessonId}/beat`,
+          { seconds: BEAT_SEC, scroll_pct: scroll.current },
+        );
+        if (live) setStudy((s) => (s ? { ...s, ...r } : s));
+      } catch {
+        // Сеть моргнула — молчим: в следующий удар всё сойдётся.
+      }
+    };
+    // Первый удар сразу: он заводит отсчёт на сервере.
+    tick();
+    const timer = setInterval(tick, BEAT_SEC * 1000);
+    return () => { live = false; clearInterval(timer); };
+  }, [lessonId, done]);
 
   /**
    * «Дочитал» определяем по обычной прокрутке страницы: когда конец текста
@@ -45,7 +94,7 @@ export function Lesson() {
   const endRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
-      if (entries.some((x) => x.isIntersecting)) { setScrolledEnd(true); io.disconnect(); }
+      if (entries.some((x) => x.isIntersecting)) { scroll.current = 100; io.disconnect(); }
     }, { rootMargin: '0px 0px -40px 0px' });
     io.observe(el);
   }, []);
@@ -71,9 +120,10 @@ export function Lesson() {
 
   const m = data.material;
   const needPct = m?.min_watch_pct ?? 90;
-  const materialReady =
-    m?.content_type === 'video' ? videoPct >= needPct
-      : scrolledEnd;   // текст — дочитан до конца, pdf — открыт
+  // Готовность решает сервер: он один знает, сколько времени прошло на самом
+  // деле. Клиент только показывает, сколько осталось.
+  const materialReady = study?.can_complete ?? false;
+  const left = Math.max(0, (study?.needed_seconds ?? 0) - (study?.seconds_spent ?? 0));
 
   const action = step === 'material' && !data.material_done ? (
     <button className="btn block" disabled={!materialReady || busy} onClick={materialDone}>
@@ -85,10 +135,13 @@ export function Lesson() {
     </button>
   ) : undefined;
 
+  const needScroll = !!study?.need_scroll && scroll.current < 90;
   const hint = step === 'material' && !materialReady
-    ? (m?.content_type === 'video' ? `Досмотрите видео до ${needPct}%`
-      : m?.content_type === 'pdf' ? 'Откройте документ'
-        : 'Дочитайте материал до конца')
+    ? (left > 0 && needScroll ? `Дочитайте до конца — и ещё ${human(left)}`
+      : left > 0 ? (m?.content_type === 'video'
+        ? `Смотреть ещё ${human(left)} — нужно ${needPct}% ролика`
+        : `Ещё ${human(left)} на материале`)
+      : 'Дочитайте материал до конца')
     : undefined;
 
   return (
@@ -114,7 +167,6 @@ export function Lesson() {
         <>
           {m?.content_type === 'video' && (
             <VideoPlayer
-              lessonId={id}
               src={m.file_url}
               minWatchPct={m.min_watch_pct}
               initialPct={data.video_pct}
@@ -129,7 +181,7 @@ export function Lesson() {
           )}
           {m?.content_type === 'pdf' && (
             <div className="material">
-              <PdfView src={m.file_url} onOpened={() => setScrolledEnd(true)} />
+              <PdfView src={m.file_url} onOpened={() => { scroll.current = 100; }} />
             </div>
           )}
           {data.material_done && (

@@ -7,6 +7,7 @@ import {
   preSnapshotOf, snapshotOf,
 } from './snapshot.ts';
 import { locationProblems } from './readiness.ts';
+import { needFor, type StudyNeed } from './study.ts';
 
 export interface Answer { question_id: string; option_index: number; }
 
@@ -114,16 +115,45 @@ export function recomputeUnlocks(employeeId: string) {
   }
 }
 
-/** Материал засчитан: для видео — досмотрел до min_watch_pct (проверяется на сервере). */
-export function canCompleteMaterial(employeeId: string, lessonId: string): { ok: boolean; need?: number } {
+/**
+ * МОЖНО ЛИ ЗАСЧИТАТЬ МАТЕРИАЛ.
+ *
+ * Раньше здесь проверялся только процент просмотра видео, и тот приходил от
+ * клиента: один запрос с «100» — и ролик «просмотрен». Текст не проверялся
+ * вовсе, кнопка «Засчитать» нажималась не читая.
+ *
+ * Теперь смотрим на время, накопленное сервером по своим часам (`study.ts`),
+ * и на то, докручен ли текст до конца. Это не доказывает чтения — доказать
+ * его нельзя, — но делает пролистывание таким же долгим, как чтение.
+ */
+export function canCompleteMaterial(
+  employeeId: string, lessonId: string,
+): { ok: boolean; need?: StudyNeed; spent?: number; scroll?: number } {
   const snap = snapshotOf(employeeId);
   const l = snap ? findLesson(snap, lessonId) : null;
   const m = l?.material;
-  if (!m || m.content_type !== 'video') return { ok: true };
-  const need = m.min_watch_pct ?? 90;
-  const lp = one<{ video_pct: number }>(
-    'SELECT video_pct FROM lesson_progress WHERE employee_id = ? AND lesson_id = ?', employeeId, lessonId);
-  return { ok: (lp?.video_pct ?? 0) >= need, need };
+  if (!m) return { ok: true };
+
+  const need = needFor(m, videoSecOf(m.file_url));
+  const lp = one<{ seconds_spent: number; scroll_pct: number }>(
+    'SELECT seconds_spent, scroll_pct FROM lesson_progress WHERE employee_id = ? AND lesson_id = ?',
+    employeeId, lessonId);
+  const spent = lp?.seconds_spent ?? 0;
+  const scroll = lp?.scroll_pct ?? 0;
+
+  const enough = spent >= need.seconds && (!need.scroll || scroll >= SCROLL_DONE_PCT);
+  return { ok: enough, need, spent, scroll };
+}
+
+/** Докрутил до низа — с запасом: последние проценты съедает высота окна. */
+export const SCROLL_DONE_PCT = 90;
+
+/** Длительность ролика по адресу файла: `/api/v1/files/<id>`. */
+export function videoSecOf(fileUrl: string | null): number | null {
+  const id = (fileUrl ?? '').split('/').pop();
+  if (!id) return null;
+  return one<{ duration_sec: number | null }>(
+    'SELECT duration_sec FROM files WHERE id = ?', id)?.duration_sec ?? null;
 }
 
 export function markLessonPassedIfReady(employeeId: string, lessonId: string) {
@@ -295,7 +325,9 @@ export function transferToLocation(employeeId: string, locationId: string): Tran
     if (passed.has(l.lesson_id) && !perLocation) { kept += 1; continue; }
     if (passed.has(l.lesson_id)) {
       run(`UPDATE lesson_progress
-              SET status = 'locked', material_done = 0, video_pct = 0, passed_at = NULL
+              SET status = 'locked', material_done = 0, video_pct = 0,
+                  seconds_spent = 0, scroll_pct = 0, opened_at = NULL, last_beat_at = NULL,
+                  passed_at = NULL
             WHERE employee_id = ? AND lesson_id = ?`, employeeId, l.lesson_id);
       redo += 1;
     }

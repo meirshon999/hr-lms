@@ -309,6 +309,15 @@ export function migrate() {
   addColumnIfMissing('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
   // План теперь собирает не только каркас: материалы «о компании» и уже
   // заполненные уроки лежат рядом с ним, пока человек их не подтвердит.
+  // Доказательство просмотра и прочтения: сколько времени человек провёл
+  // на материале и докрутил ли до конца. Часы наши, не клиентские.
+  addColumnIfMissing('lesson_progress', 'seconds_spent', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing('lesson_progress', 'scroll_pct', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing('lesson_progress', 'opened_at', 'TEXT');
+  addColumnIfMissing('lesson_progress', 'last_beat_at', 'TEXT');
+  // Длительность ролика, прочитанная из файла: без неё «досмотрел» держится
+  // на слове того, кого проверяют.
+  addColumnIfMissing('files', 'duration_sec', 'INTEGER');
   addColumnIfMissing('ai_plans', 'pre_json', 'TEXT');
   addColumnIfMissing('ai_plans', 'pre_source', 'TEXT');
   addColumnIfMissing('ai_plans', 'filled_json', 'TEXT');

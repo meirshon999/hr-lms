@@ -14,9 +14,14 @@ interface Card {
   paused_at: string | null;
   blocks: { id: string; title: string; lessons: {
     id: string; title: string; status: string; material_done: boolean; test_attempts: number; passed_at: string | null;
+    seconds_spent: number; needed_seconds: number;
   }[] }[];
   attestation: { attempts: { attempt_no: number; score_pct: number; passed: boolean }[] };
 }
+
+/** «4:05» вместо «245 секунд»: кадровик сравнивает с нормой на глаз. */
+const mmss = (sec: number) =>
+  sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : `${sec} с`;
 
 export function EmployeeCard() {
   const { id = '' } = useParams();
@@ -214,6 +219,14 @@ export function EmployeeCard() {
                   <div className="tx"><b>{l.title}</b></div>
                   <span className="muted" style={{ fontSize: 12 }}>
                     {l.material_done ? 'материал ✓' : 'материал —'} · попыток теста: {l.test_attempts}
+                    {/* Сколько человек на самом деле провёл на материале.
+                        Норму показываем рядом: «2 мин» без «из 4 мин» ничего
+                        не говорит, а вместе — говорит всё. */}
+                    {l.seconds_spent > 0 && (
+                      <> · на материале {mmss(l.seconds_spent)}
+                        {l.needed_seconds > 0 && <> из {mmss(l.needed_seconds)}</>}
+                      </>
+                    )}
                   </span>
                 </div>
               ))}

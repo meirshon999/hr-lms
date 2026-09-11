@@ -73,9 +73,35 @@ async function main() {
   check('у сотрудника по-прежнему 2 урока', my.progress.total === 2);
 
   const lessons = my.trajectory.blocks.flatMap((b: any) => b.lessons);
+
+  // ---------- доказательство прочтения ----------
+  // Материал нельзя засчитать, просто нажав кнопку: сервер считает время по
+  // своим часам. Раньше это держалось на доверии к клиенту, и обходилось
+  // одним запросом.
+  const first = lessons[0];
+  const early = await j(`/me/lessons/${first.id}/material-done`, { method: 'POST', h: E });
+  check('материал нельзя засчитать сразу, не побыв на нём',
+    early.s === 422 && early.d?.error?.code === 'material_not_studied',
+    `${early.s} ${early.d?.error?.code ?? ''}`);
+  check('человеку сказано, чего не хватает',
+    /[а-яё]/i.test(early.d?.error?.message ?? ''), early.d?.error?.message ?? '');
+
+  // Накрутить время ударами нельзя: сервер режет их по настоящим часам.
+  for (let i = 0; i < 20; i++) {
+    await j(`/me/lessons/${first.id}/beat`, { method: 'POST', h: E, body: { seconds: 120 } });
+  }
+  const cheated = (await j(`/me/lessons/${first.id}`, { h: E })).d;
+  check('частыми ударами время не накручивается',
+    cheated.study.seconds_spent < 60,
+    `${cheated.study.seconds_spent} с за двадцать ударов`);
+  check('сервер говорит, сколько нужно',
+    cheated.study.needed_seconds > 0, String(cheated.study.needed_seconds));
+
   for (const l of lessons) {
     const detail = (await j(`/me/lessons/${l.id}`, { h: E })).d;
     check(`урок «${detail.title}»: тест из снимка на месте`, (detail.test?.questions?.length ?? 0) > 0);
+    // Время на материале перематываем: проверка не должна простаивать минутами.
+    await j('/dev/study', { method: 'POST', h, body: { employee_id: emp.d.employee.id, lesson_id: l.id } });
     await j(`/me/lessons/${l.id}/material-done`, { method: 'POST', h: E });
     const ans = detail.test.questions.map((q: any) => ({ question_id: q.id, option_index: 0 }));
     const r = (await j(`/me/lessons/${l.id}/test`, { method: 'POST', h: E, body: { answers: ans } })).d;

@@ -429,7 +429,9 @@ function passLesson(empId: string, lessonId: string) {
   const snap = snapshotOf(empId);
   const lesson = snap ? findLesson(snap, lessonId) : null;
   if (!lesson) return;
-  run('UPDATE lesson_progress SET material_done = 1, video_pct = 100 WHERE employee_id = ? AND lesson_id = ?',
+  // Демо-сотрудники «уже учились»: время на материале проставляем с запасом,
+  // иначе их прогресс выглядел бы как пролистанный.
+  run('UPDATE lesson_progress SET material_done = 1, video_pct = 100, seconds_spent = 600, scroll_pct = 100 WHERE employee_id = ? AND lesson_id = ?',
     empId, lessonId);
   if (lesson.test) {
     const n = (one<{ n: number }>('SELECT COALESCE(MAX(attempt_no),0) n FROM test_attempts WHERE employee_id=? AND test_id=?', empId, lesson.test.test_id)!.n) + 1;

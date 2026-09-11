@@ -78,11 +78,13 @@ async function startLearning(emp: { id: string; h: any }) {
 }
 
 /** Проходит все доступные уроки своей траектории. */
-async function passAll(emp: { h: any }) {
+async function passAll(emp: { id: string; h: any }) {
   const tr = (await j('/me/trajectory', { h: emp.h })).d;
   // В траектории сотрудника аттестации среди блоков нет — она отдельным полем.
   for (const b of tr.trajectory.blocks) {
     for (const l of b.lessons) {
+      // Время на материале перематываем: проверка не должна простаивать минутами.
+      await j('/dev/study', { method: 'POST', h, body: { employee_id: emp.id, lesson_id: l.id } });
       await j(`/me/lessons/${l.id}/material-done`, { method: 'POST', h: emp.h });
       const full = (await j(`/me/lessons/${l.id}`, { h: emp.h })).d;
       const answers = (full?.test?.questions ?? []).map((q: any) => ({ question_id: q.id, option_index: 0 }));

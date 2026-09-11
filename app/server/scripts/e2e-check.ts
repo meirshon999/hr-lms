@@ -54,9 +54,10 @@ async function main() {
 
   for (const b of tree.blocks.filter((x: any) => x.kind === 'regular')) {
     for (const l of b.lessons) {
-      // видео: сервер требует реальный прогресс просмотра
-      if (l.material?.content_type === 'video')
-        await j(`/me/lessons/${l.id}/video-progress`, { method: 'POST', headers: E, body: { pct: 100 } });
+      // Время на материале сервер считает по настоящим часам. Ждать его в
+      // проверке значило бы простаивать минутами на каждом уроке, поэтому
+      // перематываем служебной ручкой тестового сервера.
+      await j('/dev/study', { method: 'POST', headers: H, body: { employee_id: eid, lesson_id: l.id } });
 
       const md = await j(`/me/lessons/${l.id}/material-done`, { method: 'POST', headers: E });
       if (md.s !== 200) console.log(`  ! material-done ${l.title}: ${md.s} ${md.d?.error?.code}`);

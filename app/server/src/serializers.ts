@@ -1,5 +1,6 @@
 import { all, one, SHARED } from './db.ts';
-import { allRegularLessonsPassed, isOverdue, trajectoryOfPosition } from './domain.ts';
+import { allRegularLessonsPassed, canCompleteMaterial, isOverdue, trajectoryOfPosition, videoSecOf } from './domain.ts';
+import { needFor } from './study.ts';
 import {
   attestationBlockOf, orderedLessons, preSnapshotOf, regularBlocks, snapshotOf, findLesson,
 } from './snapshot.ts';
@@ -137,6 +138,11 @@ export function employeeCard(e: any) {
         id: l.lesson_id, title: l.title,
         status: lp?.status ?? 'locked', material_done: bool(lp?.material_done),
         test_attempts: attempts, passed_at: lp?.passed_at ?? null,
+        /* Сколько человек провёл на материале и сколько полагалось. Кадровик
+           должен видеть «прочитал за 12 секунд текст на четыре минуты» — без
+           этого доказательство есть только внутри системы. */
+        seconds_spent: lp?.seconds_spent ?? 0,
+        needed_seconds: needFor(l.material, videoSecOf(l.material?.file_url ?? null)).seconds,
       };
     }),
   })) : [];
@@ -242,6 +248,19 @@ export function myLesson(e: any, lessonId: string) {
     id: l.lesson_id, title: l.title, status: lp.status,
     material_done: bool(lp.material_done),
     video_pct: lp.video_pct ?? 0,
+    /* Сколько человек уже провёл на материале и сколько нужно. Показываем ему
+       самому: «нельзя засчитать» без объяснения читается как поломка. */
+    study: (() => {
+      const g = canCompleteMaterial(e.id, lessonId);
+      return {
+        seconds_spent: g.spent ?? 0,
+        needed_seconds: g.need?.seconds ?? 0,
+        need_scroll: g.need?.scroll ?? false,
+        scroll_pct: g.scroll ?? 0,
+        can_complete: g.ok,
+        why: g.need?.why ?? '',
+      };
+    })(),
     index: idx + 1, total: lessons.length,
     material: l.material,
     test: l.test ? {
