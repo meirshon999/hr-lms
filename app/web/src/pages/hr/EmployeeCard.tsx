@@ -39,17 +39,55 @@ export function EmployeeCard() {
     } catch { toast('Не удалось выполнить', 'warn'); }
   }
 
-  /** Всё, что нужно передать сотруднику, — одним экраном: адрес, логин, пароль. */
+  /**
+   * ДОСТУП СОТРУДНИКА — одна ссылка вместо логина с паролем.
+   *
+   * Раньше кадровик придумывал пароль, записывал и пересылал в мессенджере.
+   * При пятидесяти наймах в месяц это пятьдесят паролей, навсегда оседающих
+   * в переписке. Теперь достаточно ссылки: она одноразовая, живёт трое суток,
+   * и человек по ней сразу задаёт свой пароль.
+   *
+   * Ссылка копируется в буфер сама — ради этого всё и затевалось: открыл,
+   * вставил в переписку, закрыл. Логин и сброс пароля остаются рядом:
+   * ссылка могла сгореть, а человек — потерять доступ через полгода.
+   */
   async function showAccess() {
-    const inv = await post<{ invite_url: string; login: string }>(`/employees/${id}/invite`);
+    const inv = await post<{ invite_url: string; login: string; hours: number }>(
+      `/employees/${id}/invite`);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(inv.invite_url);
+      copied = true;
+    } catch {
+      // Браузер не дал буфер (нет https или запрет) — ссылку всё равно видно,
+      // и её можно выделить руками. Молчать об этом нельзя, но и падать не за что.
+    }
+
     const render = (pw?: string) => ({
       title: 'Доступ сотрудника',
       body: (
         <div className="stack" style={{ fontSize: 14 }}>
-          <p className="muted" style={{ fontSize: 13 }}>Передайте сотруднику эти три строки.</p>
-          <div className="banner info"><b>Адрес:</b> {inv.invite_url}</div>
+          <div className="banner ok">
+            <b>Ссылка для входа{copied ? ' — скопирована' : ''}</b>
+            <div style={{ fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-all', marginTop: 4 }}>
+              {inv.invite_url}
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Одноразовая, действует {inv.hours} часа. Сотрудник войдёт по ней
+              и сразу задаст свой пароль — придумывать пароль за него не нужно.
+            </div>
+          </div>
+          {!copied && (
+            <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(inv.invite_url)}>
+              Скопировать ссылку
+            </button>
+          )}
           <div className="banner info"><b>Логин:</b>{' '}
-            <span style={{ fontFamily: 'monospace' }}>{inv.login}</span></div>
+            <span style={{ fontFamily: 'monospace' }}>{inv.login}</span>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Пригодится потом: ссылка сгорит, а входить он будет по логину.
+            </div>
+          </div>
           {pw
             ? <div className="banner ok"><b>Пароль:</b>{' '}
                 <span style={{ fontFamily: 'monospace', fontSize: 16 }}>{pw}</span>
@@ -57,7 +95,7 @@ export function EmployeeCard() {
                   Скопируйте — больше он не покажется.
                 </div>
               </div>
-            : <button className="btn sm" onClick={async () => {
+            : <button className="btn ghost sm" onClick={async () => {
                 if (!confirm('Задать сотруднику новый пароль? Старый перестанет работать.')) return;
                 const r = await post<{ password: string }>(`/employees/${id}/reset-password`);
                 setModal(render(r.password));
@@ -145,14 +183,18 @@ export function EmployeeCard() {
           <p className="muted" style={{ fontSize: 14, marginBottom: 12 }}>
             Когда наставник подтвердит стажировку — откройте онбординг. Пре-онбординг должен быть пройден.
           </p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn sm" onClick={() => act('internship-passed', 'Онбординг открыт')}>
+          {/* Целевое действие — залитой кнопкой, отказ — неприметной. Они были
+              одинаковыми, а это разные по весу вещи: одна открывает обучение,
+              вторая удаляет человека вместе со всем прогрессом. */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button className="btn" onClick={() => act('internship-passed', 'Онбординг открыт')}>
               Стажировка пройдена
             </button>
-            <button className="btn danger sm" onClick={() => {
-              if (confirm(`Удалить сотрудника «${data.full_name}»? Аккаунт и весь прогресс будут удалены безвозвратно.`))
-                act('internship-failed', '');
-            }}>Не прошёл</button>
+            <button className="btn ghost sm" style={{ color: 'var(--muted)' }}
+              onClick={() => {
+                if (confirm(`Удалить сотрудника «${data.full_name}»? Аккаунт и весь прогресс будут удалены безвозвратно.`))
+                  act('internship-failed', '');
+              }}>Не прошёл</button>
           </div>
         </div>
       )}

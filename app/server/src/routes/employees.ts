@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { MAX_BACKDATE_DAYS } from '../config.ts';
 import { all, one, run, uuid } from '../db.ts';
@@ -13,6 +14,13 @@ import { iinProblem, normalizeIin } from '../iin.ts';
 import { audit, auditFor } from '../audit.ts';
 import { emit } from '../events.ts';
 import { employeeCard, employeeRow } from '../serializers.ts';
+
+/** Сколько живёт ссылка-приглашение. Трое суток: выйти в первую смену успевают,
+    а забытая в переписке ссылка перестаёт быть ключом от системы. */
+const INVITE_HOURS = 72;
+
+/** Сколько сотрудников отдаём за раз, если страницу не попросили явно. */
+const DEFAULT_PAGE = 50;
 
 const actor = (req: any) => (req as any).user?.login ?? 'system';
 
@@ -46,7 +54,25 @@ export default async function employeeRoutes(app: FastifyInstance) {
         || e.phone.includes(s)
         || (digits.length >= 4 && e.iin.includes(digits)));
     }
-    return { items: rows.map(employeeRow) };
+    /*
+     * Постраничная выдача. При 50–70 наймах в месяц список за год переваливает
+     * за тысячу, и отдавать его целиком значит подвешивать браузер на ровном
+     * месте. Отбор и поиск идут по всему списку, а режется уже результат —
+     * иначе поиск находил бы только то, что попало на текущую страницу.
+     *
+     * `total` отдаём всегда: без него интерфейс не может сказать «показано
+     * 50 из 1240», а это единственное, что объясняет человеку, почему список
+     * оборвался.
+     */
+    const total = rows.length;
+    const limit = Math.min(Math.max(Number(q.limit) || DEFAULT_PAGE, 1), 500);
+    const offset = Math.max(Number(q.offset) || 0, 0);
+    return {
+      items: rows.slice(offset, offset + limit).map(employeeRow),
+      total,
+      limit,
+      offset,
+    };
   });
 
   app.post('/employees', async (req, reply) => {
@@ -134,14 +160,41 @@ export default async function employeeRoutes(app: FastifyInstance) {
     return { password: pw };
   });
 
+  /**
+   * ССЫЛКА-ПРИГЛАШЕНИЕ.
+   *
+   * Заменяет собой «придумал пароль, записал, переслал в мессенджере». При
+   * пятидесяти наймах в месяц это пятьдесят паролей, гуляющих по переписке
+   * и оседающих в ней навсегда.
+   *
+   * По ссылке человек попадает внутрь сразу и первым делом задаёт свой пароль.
+   * Раз ссылка пускает в систему, она **одноразовая и живёт трое суток**:
+   * попавшая не в те руки, она не должна работать вечно. Прежние
+   * неиспользованные приглашения этого человека гасим — действующее всегда одно.
+   */
   app.post('/employees/:id/invite', async (req, reply) => {
     const e = one<any>('SELECT * FROM employees WHERE id = ?', (req.params as any).id);
     if (!e) return reply.code(404).send(err('not_found', 'Сотрудник не найден'));
-    const u = one<{ login: string }>('SELECT login FROM users WHERE employee_id = ?', e.id);
+    const u = one<{ id: string; login: string }>(
+      'SELECT id, login FROM users WHERE employee_id = ?', e.id);
+    if (!u) return reply.code(404).send(err('not_found', 'У сотрудника нет входа'));
+
+    run('DELETE FROM invites WHERE user_id = ? AND used_at IS NULL', u.id);
+    const token = randomBytes(24).toString('base64url');
+    const expires = new Date(Date.now() + INVITE_HOURS * 3600_000).toISOString();
+    run('INSERT INTO invites (token, user_id, created_at, expires_at) VALUES (?,?,?,?)',
+      token, u.id, stamp(), expires);
+
     // адрес берём из запроса: на боевом стенде это его домен, а не localhost
     const origin = (req.headers.origin as string)
       || `${(req.headers['x-forwarded-proto'] as string) ?? req.protocol}://${req.headers.host}`;
-    return { invite_url: `${origin}/#/login`, login: u?.login ?? null };
+    audit(actor(req), 'invite', e.id, `ссылка действует до ${expires.slice(0, 10)}`);
+    return {
+      invite_url: `${origin}/#/invite/${token}`,
+      login: u.login,
+      expires_at: expires,
+      hours: INVITE_HOURS,
+    };
   });
 
   app.post('/employees/:id/internship-passed', async (req, reply) => {

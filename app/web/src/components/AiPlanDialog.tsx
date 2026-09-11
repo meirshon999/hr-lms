@@ -193,10 +193,13 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
         </div>
         <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
           Должность «{positionName}» · принесите документы — блоки, уроки, тесты
-          и аттестацию система соберёт сама, а вы поправите
+          и аттестацию система соберёт сама, а вы поправите. В каталог ничего
+          не попадёт, пока вы не нажмёте «Создать»
         </p>
 
-        <div className="ai-grid">
+        {/* Пока разбирать нечего, правая колонка — это серая подсказка на
+            полэкрана. Отдаём всю ширину полям: в них вставляют регламенты. */}
+        <div className={plan || pre ? 'ai-grid' : undefined}>
           {/* ---------------- слева: документы ---------------- */}
           <div>
             <div className="panel" style={{ marginBottom: 10 }}>
@@ -267,14 +270,6 @@ export function AiPlanDialog({ positionId, positionName, hasContent, onClose, on
 
           {/* ---------------- справа: что получилось ---------------- */}
           <div>
-            {!plan && !pre && (
-              <div className="panel muted" style={{ fontSize: 13.5 }}>
-                Здесь появится готовая траектория: материалы о компании, блоки,
-                уроки с материалом и тестом и аттестация в конце.
-                В каталог ничего не попадёт, пока вы не нажмёте «Создать».
-              </div>
-            )}
-
             {phase === 'filling' && (
               <div className="panel" style={{ marginBottom: 10 }}>
                 <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>

@@ -24,7 +24,7 @@ const setDay = async (d: string) => {
   if (r.d?.today !== d) throw new Error(`часы не перемотались на ${d}: ${JSON.stringify(r.d)}`);
 };
 const byName = async (re: RegExp) => {
-  const rows = (await j('/employees?include_archived=1', { h })).d.items;
+  const rows = (await j('/employees?include_archived=1&limit=500', { h })).d.items;
   return rows.find((x: any) => re.test(x.full_name));
 };
 
@@ -94,6 +94,51 @@ async function main() {
   check('пауза снята', cp.paused_at === null);
   const rs2 = await j(`/employees/${overdue.id}/resume`, { method: 'POST', h });
   check('повторное снятие отклоняется', rs2.s === 409, `HTTP ${rs2.s}`);
+
+  // ---- 4. Ссылка-приглашение ----
+  console.log('\n4. Ссылка-приглашение');
+  const some = await byName(/Света|Светлана/);
+  const inv = await j(`/employees/${some.id}/invite`, { method: 'POST', h });
+  check('приглашение выдаётся', inv.s === 200 && /#\/invite\//.test(inv.d?.invite_url ?? ''),
+    inv.d?.invite_url ?? '');
+  check('сказано, сколько оно живёт', inv.d?.hours > 0 && !!inv.d?.expires_at,
+    `${inv.d?.hours} ч`);
+
+  const token = String(inv.d.invite_url).split('/invite/')[1];
+  // Вход по ссылке — единственный способ попасть внутрь без пароля, поэтому
+  // проверяем и то, что он работает, и то, что работает ровно один раз.
+  const enter = await j(`/auth/invite/${token}`, { method: 'POST' });
+  check('по ссылке пускают внутрь', enter.s === 200 && !!enter.d?.token, String(enter.s));
+  check('и сразу требуют задать свой пароль', enter.d?.must_change_password === true);
+
+  const again = await j(`/auth/invite/${token}`, { method: 'POST' });
+  check('второй раз та же ссылка не работает', again.s === 410, String(again.s));
+  check('в отказе сказано, что делать', /кадровик/i.test(again.d?.error?.message ?? ''),
+    again.d?.error?.message ?? '');
+
+  check('выдуманная ссылка не работает',
+    (await j('/auth/invite/нетакоготокена', { method: 'POST' })).s === 410);
+
+  const first = await j(`/employees/${some.id}/invite`, { method: 'POST', h });
+  const second = await j(`/employees/${some.id}/invite`, { method: 'POST', h });
+  const t1 = String(first.d.invite_url).split('/invite/')[1];
+  check('новое приглашение гасит прежнее',
+    (await j(`/auth/invite/${t1}`, { method: 'POST' })).s === 410);
+  check('а новое работает',
+    (await j(`/auth/invite/${String(second.d.invite_url).split('/invite/')[1]}`, { method: 'POST' })).s === 200);
+
+  // ---- 5. Постраничная выдача ----
+  console.log('\n5. Постраничная выдача');
+  const page = await j('/employees?limit=2', { h });
+  check('страница обрезана по limit', page.d?.items?.length === 2, String(page.d?.items?.length));
+  check('всего известно сколько', page.d?.total > 2, String(page.d?.total));
+  const next = await j('/employees?limit=2&offset=2', { h });
+  check('вторая страница — другие люди',
+    next.d.items[0]?.id !== page.d.items[0]?.id
+    && next.d.items[0]?.id !== page.d.items[1]?.id);
+  check('отбор считается по всему списку, а не по странице',
+    (await j('/employees?limit=1&stage=completed', { h })).d.total
+      === (await j('/employees?stage=completed&limit=500', { h })).d.items.length);
 
   // ---- уборка ----
   await setDay(startToday);

@@ -29,6 +29,47 @@ function noteFailure(ip: string) {
 }
 
 export default async function authRoutes(app: FastifyInstance) {
+  /**
+   * ВХОД ПО ССЫЛКЕ-ПРИГЛАШЕНИЮ.
+   *
+   * Единственный способ войти без пароля, и потому обставлен строго: ссылка
+   * одноразовая, с коротким сроком, гасится в тот же миг, когда сработала.
+   * Дальше человек попадает на экран смены пароля и без него никуда не пройдёт
+   * — приглашение даёт вход, а не учётную запись без пароля.
+   *
+   * Перебор тут бессмысленнее, чем у пароля (токен случайный, 24 байта), но
+   * счётчик попыток общий с обычным входом: пусть тот, кто пробует, упирается
+   * в ту же стену.
+   */
+  app.post('/auth/invite/:token', async (req, reply) => {
+    const ip = req.ip;
+    if (tooManyAttempts(ip))
+      return reply.code(429).send(err('too_many_attempts',
+        `Слишком много попыток. Попробуйте через ${LOGIN_WINDOW_MIN} минут`));
+
+    const token = (req.params as any).token as string;
+    const inv = one<any>('SELECT * FROM invites WHERE token = ?', token);
+    const bad = () => {
+      noteFailure(ip);
+      return reply.code(410).send(err('invite_invalid',
+        'Ссылка не действует: она одноразовая и живёт трое суток. Попросите новую у кадровика'));
+    };
+    if (!inv || inv.used_at) return bad();
+    if (new Date(inv.expires_at).getTime() < Date.now()) return bad();
+
+    const u = one<any>('SELECT * FROM users WHERE id = ?', inv.user_id);
+    if (!u || !u.is_active) return bad();
+
+    // Гасим до выдачи токена: если что-то пойдёт не так дальше, ссылка всё
+    // равно уже использована — это безопаснее, чем оставить её живой.
+    run('UPDATE invites SET used_at = ? WHERE token = ?', new Date().toISOString(), token);
+    // Пароль человек задаёт сам, прямо сейчас: вошёл по ссылке — поставь свой.
+    run('UPDATE users SET must_change_password = 1 WHERE id = ?', u.id);
+
+    attempts.delete(ip);
+    return { token: issueToken(u.id), role: u.role, must_change_password: true };
+  });
+
   app.post('/auth/login', async (req, reply) => {
     const ip = req.ip;
     if (tooManyAttempts(ip))

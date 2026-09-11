@@ -62,9 +62,11 @@ input, textarea, select { font: inherit; color: var(--text); }
 .pill.passed { background: #e4f1ea; color: var(--success); }
 .pill.stage-intern { background: #f6ecd8; color: var(--accent-dark); }
 .pill.stage-onboarding { background: #eae2f2; color: #6a4c93; }
-.pill.stage-completed { background: #e4f1ea; color: var(--success); }
+/* Завершил и Просрочено — это итог и тревога. Пастельные, как у остальных,
+   они тонули в таблице: глаз не находил ни того, ни другого. */
+.pill.stage-completed { background: var(--success); color: #fff; }
 .pill.stage-archived { background: #f0ebe4; color: var(--muted); }
-.pill.overdue { background: #fbeceb; color: var(--error); }
+.pill.overdue { background: var(--error); color: #fff; }
 
 .field { display: block; margin-bottom: 14px; }
 .field > span { display: block; font-size: 13px; font-weight: 700; color: var(--primary-2); margin-bottom: 5px; }

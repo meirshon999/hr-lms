@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Loader } from './lib';
 import { Login } from './pages/Login';
+import { Invite } from './pages/Invite';
 import { ChangePassword } from './pages/ChangePassword';
 import { PreOnboarding } from './pages/employee/PreOnboarding';
 import { Trajectory } from './pages/employee/Trajectory';
@@ -23,6 +24,8 @@ export function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Ссылка-приглашение: единственный адрес, доступный без входа. */}
+        <Route path="/invite/:token" element={<Invite />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -40,6 +43,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
+      {/* Уже вошёл и открыл чужую ссылку — не сжигаем её, просто уводим домой. */}
+      <Route path="/invite/:token" element={<Navigate to="/" replace />} />
 
       {!isHr && <>
         <Route path="/" element={<EmployeeHome />} />

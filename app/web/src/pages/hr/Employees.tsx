@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get, post } from '../../api';
 import { ApiError } from '../../api';
@@ -12,6 +12,11 @@ interface Row {
   progress: { passed: number; total: number };
 }
 interface Pos { id: string; name: string; trajectory_status: string; }
+interface Page { items: Row[]; total: number; limit: number; offset: number }
+
+/** Сколько строк показываем сразу. Больше экрана всё равно не читают. */
+const PAGE = 50;
+
 interface Loc { id: string; name: string; city: string | null; }
 
 export function Employees() {
@@ -26,8 +31,20 @@ export function Employees() {
   if (q.location_id) qs.set('location_id', q.location_id);
   if (q.include_archived) qs.set('include_archived', '1');
 
+  /*
+   * Список грузится страницами. При 50–70 наймах в месяц за год набирается
+   * под тысячу человек, и отдавать их разом значит подвешивать браузер.
+   *
+   * Страницы не нумеруем, а досыпаем кнопкой: кадровик ищет человека, а не
+   * листает реестр, и «показать ещё» ему понятнее номеров страниц. Отбор и
+   * поиск считаются на сервере по всему списку, поэтому найдётся и тот, кто
+   * на десятой сотне.
+   */
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => { setLimit(PAGE); }, [qs.toString()]);
+
   const { data, loading, error, reload } = useAsync(
-    () => get<{ items: Row[] }>(`/employees?${qs}`), [qs.toString()],
+    () => get<Page>(`/employees?${qs}&limit=${limit}`), [qs.toString(), limit],
   );
   const { data: locs } = useAsync(() => get<{ items: Loc[] }>('/locations'), []);
 
@@ -94,6 +111,18 @@ export function Employees() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {data && data.total > data.items.length && (
+        <div className="row" style={{ justifyContent: 'center', marginTop: 14, gap: 10, alignItems: 'center' }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            Показано {data.items.length} из {data.total}
+          </span>
+          <button className="btn ghost sm" disabled={loading}
+            onClick={() => setLimit((n) => n + PAGE)}>
+            {loading ? 'Грузим…' : 'Показать ещё'}
+          </button>
+        </div>
       )}
 
       {adding && <AddEmployee onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); reload(); }} />}

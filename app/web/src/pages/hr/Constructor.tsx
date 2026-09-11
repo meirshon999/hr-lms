@@ -315,7 +315,10 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
       {/* regular blocks */}
       {regular.map((b, bi) => (
-        <div key={b.id} className="builder-block">
+        /* Пустой блок подсвечиваем на месте, а не только строкой в списке
+           недоделок: человеку надо видеть, куда нажать, а не искать по названию. */
+        <div key={b.id} className="builder-block"
+          style={b.lessons?.length ? undefined : { borderColor: 'var(--error)' }}>
           <header>
             <MoveBtns i={bi} count={regular.length} onMove={(d) => moveBlock(bi, d)} />
             <EditableTitle value={b.title} heading onSave={(v) => patch(`/blocks/${b.id}`, { title: v }).then(refresh)} />

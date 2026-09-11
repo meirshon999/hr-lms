@@ -238,6 +238,18 @@ CREATE TABLE IF NOT EXISTS ai_block_drafts (
   created_at TEXT NOT NULL
 );
 
+/* Одноразовое приглашение: ссылка вместо «придумал пароль и переслал».
+   Живёт коротко и сгорает при первом входе — по ней пускают в систему,
+   поэтому попавшая не в те руки ссылка не должна работать вечно. */
+CREATE TABLE IF NOT EXISTS invites (
+  token      TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_invites_user ON invites(user_id);
+
 /* Расход ИИ. Платит тот, чей ключ вставлен, а счёт видно только в кабинете
    провайдера — и то в конце месяца. Здесь считаем сами, чтобы человек знал
    цену до счёта. Строка на каждое обращение: они редкие, гигабайтов не будет. */
@@ -307,7 +319,7 @@ export function migrate() {
 /** Полный сброс: удаляет все данные (только тестовый сервер). */
 export function wipe() {
   const tables = [
-    'audit_log', 'ai_usage', 'ai_drafts', 'ai_block_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
+    'audit_log', 'ai_usage', 'invites', 'ai_drafts', 'ai_block_drafts', 'ai_plans', 'ai_lesson_sources', 'test_attempts', 'lesson_progress', 'pre_onboarding_views', 'employees',
     'questions', 'tests', 'materials', 'lesson_locations', 'lessons', 'blocks',
     'pre_onboarding_items', 'trajectories', 'positions', 'locations', 'users',
     'app_state', 'files',

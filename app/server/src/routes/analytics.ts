@@ -85,5 +85,24 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     };
   });
 
+  /**
+   * ЧТО ЖДЁТ ЧЕЛОВЕКА. Маленький и дешёвый ответ — его спрашивает каждый экран
+   * кадровика, чтобы показать цифру в боковом меню.
+   *
+   * Уведомлений в системе нет по решению заказчика, и это оставляет слепое
+   * пятно: стажёр прочитал пре-онбординг, нажал «Продолжить» и ждёт, пока
+   * кадровик отметит стажировку. Кадровик об этом не узнает, пока не зайдёт
+   * в список. Цифра в меню и есть замена уведомлению: она видна отовсюду.
+   */
+  app.get('/attention', async () => {
+    const waiting = all<{ n: number }>(
+      `SELECT COUNT(*) n FROM employees
+        WHERE stage = 'intern' AND pre_onboarding_done = 1 AND internship_passed = 0`,
+    )[0]?.n ?? 0;
+    const overdue = all<any>(`SELECT * FROM employees WHERE stage = 'onboarding'`)
+      .filter(isOverdue).length;
+    return { waiting_internship: waiting, overdue };
+  });
+
   // Журнал действий переехал к администратору — см. routes/users.ts.
 }

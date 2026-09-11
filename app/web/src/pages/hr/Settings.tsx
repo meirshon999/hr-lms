@@ -147,31 +147,38 @@ export function Settings() {
       </div>
 
       {/* Расход. Счёт приходит через месяц и только в кабинете провайдера —
-          между «нажал» и «увидел сумму» слишком долго, чтобы молчать. */}
+          между «нажал» и «увидел сумму» слишком долго, чтобы молчать.
+          Сворачиваем в одну строку: ради этих цифр не должен уезжать вниз
+          блок с ключом, за которым сюда и приходят. */}
       {u.calls_total > 0 && (
-        <div className="panel" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Расход за 30 дней</h3>
-          <div className="row" style={{ gap: 24, flexWrap: 'wrap', marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 600 }}>{u.calls}</div>
-              <div className="muted" style={{ fontSize: 12 }}>обращений к ИИ</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 600 }}>{thousands(u.tokens_in + u.tokens_out)}</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                токенов · {thousands(u.tokens_in)} на вход, {thousands(u.tokens_out)} на ответ
+        <details className="panel" style={{ marginBottom: 16 }}>
+          <summary style={{ cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'baseline' }}>
+            <b style={{ fontSize: 13.5 }}>Расход за 30 дней</b>
+            <span className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+              {u.calls} обращений · {thousands(u.tokens_in + u.tokens_out)} токенов
+              {u.failed > 0 && ` · ${u.failed} неудачных`}
+            </span>
+          </summary>
+
+          <div style={{
+            display: 'grid', gap: 10, marginTop: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          }}>
+            {[
+              ['Обращений', String(u.calls)],
+              ['Токенов на вход', thousands(u.tokens_in)],
+              ['Токенов на ответ', thousands(u.tokens_out)],
+              ['Всего за всё время', String(u.calls_total)],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div style={{ fontSize: 18, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{label}</div>
               </div>
-            </div>
-            {u.failed > 0 && (
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 600 }}>{u.failed}</div>
-                <div className="muted" style={{ fontSize: 12 }}>неудачных (их тоже считают)</div>
-              </div>
-            )}
+            ))}
           </div>
 
           {u.by_action.length > 0 && (
-            <table className="mini" style={{ width: '100%', fontSize: 13 }}>
+            <table className="mini" style={{ width: '100%', fontSize: 13, marginTop: 12 }}>
               <tbody>
                 {u.by_action.map((r) => (
                   <tr key={r.action}>
@@ -187,10 +194,10 @@ export function Settings() {
           )}
 
           <p className="muted" style={{ fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-            Всего за всё время — {u.calls_total}. Сумму в деньгах смотрите в кабинете
-            провайдера: тарифы меняются, и считать их здесь значило бы врать.
+            Сумму в деньгах смотрите в кабинете провайдера: тарифы меняются,
+            и считать их здесь значило бы врать.
           </p>
-        </div>
+        </details>
       )}
 
       <div className="panel">
