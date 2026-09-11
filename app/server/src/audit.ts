@@ -43,6 +43,7 @@ export const ACTION_LABEL: Record<string, string> = {
   ai_apply: 'Подтвердил урок, собранный ИИ',
   ai_plan_apply: 'Создал траекторию из документа',
   ai_attestation_apply: 'Подтвердил аттестацию, собранную ИИ',
+  ai_settings: 'Изменил настройки ИИ',
   publish: 'Опубликовал траекторию',
   unpublish: 'Снял траекторию с публикации',
 };

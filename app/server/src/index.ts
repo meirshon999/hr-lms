@@ -7,10 +7,9 @@ import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import {
-  AI_PROVIDER, CORS_ORIGINS, DEV_TOOLS, GROQ_MODEL, IS_PROD,
-  MAX_UPLOAD_MB, PORT, STT_PROVIDER,
-} from './config.ts';
+import { CORS_ORIGINS, DEV_TOOLS, IS_PROD, MAX_UPLOAD_MB, PORT } from './config.ts';
+import { aiInfo } from './ai/provider.ts';
+import { sttInfo } from './ai/transcribe.ts';
 import { migrate, one } from './db.ts';
 import { seed } from './seed.ts';
 import { err } from './auth.ts';
@@ -24,6 +23,7 @@ import fileRoutes from './routes/files.ts';
 import locationRoutes from './routes/locations.ts';
 import aiRoutes from './routes/ai.ts';
 import userRoutes from './routes/users.ts';
+import settingsRoutes from './routes/settings.ts';
 
 migrate();
 // Первый запуск с пустой базой. В бою — только справочники и образец траектории;
@@ -67,6 +67,7 @@ if (DEV_TOOLS) await app.register(devRoutes, { prefix: '/api/v1' });
 await app.register(fileRoutes, { prefix: '/api/v1' });
 await app.register(aiRoutes, { prefix: '/api/v1' });
 await app.register(userRoutes, { prefix: '/api/v1' });
+await app.register(settingsRoutes, { prefix: '/api/v1' });
 
 // Swagger UI из openapi.yaml (в корне проекта) — живое дерево API на /docs
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -99,6 +100,10 @@ await app.listen({ port: PORT, host: '0.0.0.0' });
 console.log(`  LMS на порту ${PORT}`);
 // Состояние ИИ — в журнал запуска. Иначе «почему нет кнопок» выясняется только
 // входом в систему, а на чужом сервере журнал — единственное, что видно.
-console.log(AI_PROVIDER === 'off'
-  ? '  ИИ выключен: не задан ни GROQ_API_KEY, ни ANTHROPIC_API_KEY'
-  : `  ИИ: ${AI_PROVIDER} / ${GROQ_MODEL}, речь: ${STT_PROVIDER}`);
+{
+  const ai = aiInfo();
+  const stt = sttInfo();
+  console.log(ai.enabled
+    ? `  ИИ: ${ai.provider} / ${ai.model} (ключ ${ai.source === 'env' ? 'с сервера' : 'из настроек'}), речь: ${stt.enabled ? stt.model : 'нет'}`
+    : `  ИИ выключен — ${ai.reason}`);
+}

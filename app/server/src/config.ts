@@ -54,14 +54,18 @@ export const CORS_ORIGINS = (process.env.LMS_ORIGINS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
 /**
- * ИИ-конструктор. Провайдер переключается одной переменной, потому что смена
- * «бесплатно → платно» не должна означать правку кода.
+ * ИИ — ЧТО ЗАДАНО НА СЕРВЕРЕ.
  *
- *   off       — функции нет: кнопки не появляются, адреса отвечают 503
- *   groq      — бесплатный тариф, формат OpenAI, модели Llama
- *   anthropic — Claude: платно, но читает PDF и картинки без сторонних библиотек
+ * Здесь только то, что пришло из окружения. Действующие настройки собирает
+ * `ai/settings.ts`: ключ можно задать и здесь, и в интерфейсе, и решать,
+ * что победит, — не дело файла с переменными.
+ *
+ * Переменная окружения безопаснее: ключ не попадает ни в базу, ни в резервные
+ * копии. Поэтому на боевом сервере лучше задавать именно её.
  */
-export type AiProvider = 'off' | 'groq' | 'anthropic';
+
+/** Имя провайдера, если его назвали явно. Пусто — выведем из того, какой ключ есть. */
+export const AI_PROVIDER_ENV = (process.env.LMS_AI_PROVIDER ?? '').toLowerCase().trim();
 
 // trim: ключ почти всегда попадает сюда вставкой из буфера, и лишний перевод
 // строки на конце превращает рабочий ключ в 401 без единой подсказки почему.
@@ -79,36 +83,12 @@ export const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? '').trim();
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-sonnet-5';
 
 /**
- * Провайдер можно назвать явно, но если не назвали — выводим из того, какой ключ
- * задан. Иначе выходит ловушка: человек добавил ключ, всё выглядит настроенным,
- * а кнопок нет, потому что не хватает второй переменной, о которой он не знал.
- * Явный `off` выключает всегда.
+ * РАСШИФРОВКА РЕЧИ включается сама, если у действующего провайдера есть модель
+ * для звука. Отдельная переменная нужна ровно для одного: выключить диктовку,
+ * не выключая сборку уроков. У Claude входа для звука нет вовсе, поэтому при
+ * нём микрофон не появится независимо от этой переменной.
  */
-export const AI_PROVIDER = ((): AiProvider => {
-  const v = (process.env.LMS_AI_PROVIDER ?? '').toLowerCase();
-  if (v === 'off') return 'off';
-  if (v === 'groq' || v === 'anthropic') return v;
-  if (ANTHROPIC_API_KEY) return 'anthropic';
-  if (GROQ_API_KEY) return 'groq';
-  return 'off';
-})();
-
-/**
- * РАСШИФРОВКА РЕЧИ — отдельный переключатель, и намеренно.
- *
- * У Claude нет входа для звука вообще. Если бы диктовка ходила через тот же
- * `LMS_AI_PROVIDER`, то переход на платный Claude ради качества уроков молча
- * ломал бы микрофон. Поэтому речь и текст разведены: уроки может собирать Claude,
- * а речь расшифровывать Groq — на том же бесплатном ключе.
- *
- * По умолчанию включается сам, если ключ Groq задан.
- */
-export const STT_PROVIDER = ((): 'off' | 'groq' => {
-  const v = (process.env.LMS_STT_PROVIDER ?? '').toLowerCase();
-  if (v === 'off') return 'off';
-  if (v === 'groq') return 'groq';
-  return GROQ_API_KEY ? 'groq' : 'off';
-})();
+export const STT_PROVIDER_ENV = (process.env.LMS_STT_PROVIDER ?? '').toLowerCase().trim();
 export const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL ?? 'whisper-large-v3';
 /** Язык материалов сети. Указанный язык заметно поднимает точность расшифровки. */
 export const STT_LANGUAGE = process.env.LMS_STT_LANGUAGE ?? 'ru';

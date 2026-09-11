@@ -1,20 +1,17 @@
 import { z, type ZodType } from 'zod';
-import {
-  AI_PROVIDER, ANTHROPIC_API_KEY, ANTHROPIC_MODEL,
-  GROQ_API_KEY, GROQ_BASE_URL, GROQ_MODEL,
-} from '../config.ts';
+import { aiSettings, PROVIDER_INFO, type AiSettings } from './settings.ts';
 
 /**
  * СЛОЙ ПРОВАЙДЕРА ИИ.
  *
  * Наружу торчит одна функция: «вот текст и вот форма ответа — верни объект этой
- * формы». Кто именно его вернул, Groq или Claude, вызывающий код не знает.
- * Поэтому переход «бесплатно → платно» это правка переменной окружения, а не кода.
+ * формы». Кто именно его вернул, Groq, OpenAI или Claude, вызывающий код не знает.
+ * Поэтому смена провайдера — правка настройки, а не кода.
  *
- * Почему разные способы обращения. К Claude идём через официальный SDK: у него
- * структурированный ответ — часть протокола, модель физически не может вернуть
- * поле не той формы. У Groq формат OpenAI, там достаточно одного POST, и тащить
- * ради него целую библиотеку в проект с семью зависимостями незачем.
+ * Почему разные способы обращения. У Groq и OpenAI формат запроса одинаковый —
+ * их обслуживает один и тот же код, различаются только адрес, ключ и модель.
+ * К Claude идём через официальный SDK: у него структурированный ответ — часть
+ * протокола, модель физически не может вернуть поле не той формы.
  */
 
 export class AiError extends Error {
@@ -23,14 +20,17 @@ export class AiError extends Error {
   }
 }
 
-export const aiEnabled = () => AI_PROVIDER !== 'off';
+export const aiEnabled = () => aiSettings().provider !== 'off' && !!aiSettings().apiKey;
 
-/** Что показать HR, если функция не работает: причина всегда в настройке сервера. */
+/** Что показать HR, если функция не работает. Причина всегда в настройке. */
 export function aiUnavailableReason(): string | null {
-  if (AI_PROVIDER === 'off')
-    return 'ИИ-конструктор выключен: не задан ни GROQ_API_KEY, ни ANTHROPIC_API_KEY';
-  if (AI_PROVIDER === 'groq' && !GROQ_API_KEY) return 'Не задан GROQ_API_KEY';
-  if (AI_PROVIDER === 'anthropic' && !ANTHROPIC_API_KEY) return 'Не задан ANTHROPIC_API_KEY';
+  const s = aiSettings();
+  if (s.provider === 'off') {
+    return s.source === 'settings'
+      ? 'ИИ выключен в настройках'
+      : 'ИИ не настроен: админ может задать ключ в разделе «Настройки»';
+  }
+  if (!s.apiKey) return 'ИИ не настроен: нет ключа';
   return null;
 }
 
@@ -42,7 +42,7 @@ export interface AiRequest<T> {
   /** Форма ответа. Она же проверка: не подошло — считаем, что модель не справилась. */
   schema: ZodType<T>;
   /**
-   * Та же форма как JSON Schema. У Claude схему навязывает SDK, у Groq —
+   * Та же форма как JSON Schema. У Claude схему навязывает SDK, у остальных —
    * response_format. Без неё модель придумывает свои имена полей: на этом
    * регламенте она вернула «content» вместо «material» и лишнее поле сверху.
    */
@@ -61,29 +61,31 @@ export interface AiResult<T> {
 export async function generateJson<T>(req: AiRequest<T>): Promise<AiResult<T>> {
   const reason = aiUnavailableReason();
   if (reason) throw new AiError(reason, 'ai_disabled');
-  if (AI_PROVIDER === 'anthropic') return viaAnthropic(req);
+
+  const s = aiSettings();
+  if (s.provider === 'anthropic') return viaAnthropic(req, s);
 
   // Имена полей платформа гарантирует, а «не меньше трёх вопросов» — нет: это
   // ограничение проверяет наша схема. Разовый недобор лечится повтором дешевле,
   // чем показом ошибки человеку, который ни в чём не виноват.
   try {
-    return await viaGroq(req);
+    return await viaOpenAiFormat(req, s);
   } catch (e) {
-    if (e instanceof AiError && e.code === 'ai_bad_shape') return viaGroq(req);
+    if (e instanceof AiError && e.code === 'ai_bad_shape') return viaOpenAiFormat(req, s);
     throw e;
   }
 }
 
 // ---------------------------------------------------------------- Claude
 
-async function viaAnthropic<T>(req: AiRequest<T>): Promise<AiResult<T>> {
+async function viaAnthropic<T>(req: AiRequest<T>, s: AiSettings): Promise<AiResult<T>> {
   // Импорт внутри функции: на бесплатном режиме библиотека не нужна и не грузится.
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const { zodOutputFormat } = await import('@anthropic-ai/sdk/helpers/zod');
 
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: s.apiKey });
   const response = await client.messages.parse({
-    model: ANTHROPIC_MODEL,
+    model: s.model,
     max_tokens: req.maxTokens ?? 16000,
     system: req.system,
     messages: [{ role: 'user', content: `${req.user}\n\nФорма ответа:\n${req.shape}` }],
@@ -92,23 +94,24 @@ async function viaAnthropic<T>(req: AiRequest<T>): Promise<AiResult<T>> {
 
   // parsed_output пустой, если разобрать не удалось — молча продолжать нельзя.
   if (!response.parsed_output) throw new AiError('Модель вернула ответ не той формы');
-  return { data: response.parsed_output as T, provider: 'anthropic', model: ANTHROPIC_MODEL };
+  return { data: response.parsed_output as T, provider: 'anthropic', model: s.model };
 }
 
-// ------------------------------------------------------------------ Groq
+// ------------------------------------------------- Groq, OpenAI и им подобные
 
-async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
+async function viaOpenAiFormat<T>(req: AiRequest<T>, s: AiSettings): Promise<AiResult<T>> {
   // Схему навязываем самой платформе. Без этого модель придумывает свои имена
   // полей: на настоящем регламенте она вернула «content» вместо «material»
   // и добавила поле, которого в форме нет.
+  //
   // Рассуждающие модели тратят часть ответа на размышления вслух, и они идут
   // в тот же лимит, что и сам ответ. На длинном регламенте размышления съедали
-  // весь запас, ответ приходил пустым, и Groq отвечал 400 «не удалось проверить
-  // JSON» с пустым текстом. Отсюда две меры: просим думать коротко — замерено,
-  // размышления падают с 1600 символов до 120, а сам урок выходит полнее —
+  // весь запас, ответ приходил пустым, и провайдер отвечал 400 «не удалось
+  // проверить JSON» с пустым текстом. Отсюда две меры: просим думать коротко —
+  // замерено, размышления падают с 1600 символов до 120, а урок выходит полнее —
   // и держим запас вдвое больше прежнего.
   const body: Record<string, unknown> = {
-    model: GROQ_MODEL,
+    model: s.model,
     max_tokens: req.maxTokens ?? 16000,
     temperature: 0.3,
     response_format: {
@@ -121,35 +124,38 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
     ],
   };
   // Настройку понимают только модели gpt-oss; остальные на неё ругаются.
-  if (GROQ_MODEL.includes('gpt-oss')) body.reasoning_effort = 'low';
+  if (s.model.includes('gpt-oss')) body.reasoning_effort = 'low';
 
   let res: Response;
   try {
-    res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+    res = await fetch(`${s.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${GROQ_API_KEY}`,
+        authorization: `Bearer ${s.apiKey}`,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(120_000),
     });
   } catch (e: any) {
     throw new AiError(
-      e?.name === 'TimeoutError' ? 'Модель не ответила за две минуты' : 'Не удалось связаться с Groq',
+      e?.name === 'TimeoutError' ? 'Модель не ответила за две минуты' : 'Не удалось связаться с провайдером',
       'ai_unreachable',
     );
   }
 
+  if (res.status === 401 || res.status === 403) {
+    throw new AiError('Ключ не принят провайдером — проверьте его в настройках', 'ai_bad_key');
+  }
   if (res.status === 429) {
-    throw new AiError('Бесплатный лимит Groq исчерпан — попробуйте позже', 'ai_rate_limited');
+    throw new AiError('Лимит провайдера исчерпан — попробуйте позже', 'ai_rate_limited');
   }
   if (!res.ok) {
     // Ответ провайдера — английский JSON про схемы и токены. HR он ничего
     // не объясняет и только пугает, поэтому подробности уходят в журнал
     // сервера, а человеку достаётся понятная фраза.
     const detail = await res.text().catch(() => '');
-    console.error(`[ai] Groq ${res.status}: ${detail.slice(0, 500)}`);
+    console.error(`[ai] ${s.provider} ${res.status}: ${detail.slice(0, 500)}`);
     // Модель не уложилась в форму — то же самое, что ответ, не прошедший схему,
     // и лечится тем же повтором.
     if (detail.includes('json_validate_failed')) {
@@ -159,7 +165,10 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
         'ai_bad_shape',
       );
     }
-    throw new AiError(`Groq ответил ошибкой ${res.status} — подробности в журнале сервера`);
+    if (detail.includes('model_not_found') || detail.includes('does not exist')) {
+      throw new AiError(`Модель «${s.model}» провайдеру неизвестна — впишите другую в настройках`, 'ai_bad_model');
+    }
+    throw new AiError(`Провайдер ответил ошибкой ${res.status} — подробности в журнале сервера`);
   }
 
   const json: any = await res.json();
@@ -186,7 +195,7 @@ async function viaGroq<T>(req: AiRequest<T>): Promise<AiResult<T>> {
     console.error('[ai] начало ответа:', JSON.stringify(raw).slice(0, 500));
     throw new AiError('Модель вернула ответ не той формы — попробуйте ещё раз', 'ai_bad_shape');
   }
-  return { data: parsed.data, provider: 'groq', model: GROQ_MODEL };
+  return { data: parsed.data, provider: s.provider, model: s.model };
 }
 
 /** Модели поменьше любят обернуть JSON в ```json — снимаем обёртку. */
@@ -195,13 +204,42 @@ function stripCodeFence(s: string): string {
   return m ? m[1] : s;
 }
 
-export const aiInfo = () => ({
-  enabled: aiEnabled(),
-  provider: AI_PROVIDER,
-  model: AI_PROVIDER === 'anthropic' ? ANTHROPIC_MODEL : AI_PROVIDER === 'groq' ? GROQ_MODEL : null,
-  reason: aiUnavailableReason(),
-  /** Читает ли провайдер PDF и картинки сам, без сторонних библиотек. */
-  reads_documents: AI_PROVIDER === 'anthropic',
-});
+export const aiInfo = () => {
+  const s = aiSettings();
+  return {
+    enabled: aiEnabled(),
+    provider: s.provider,
+    model: s.provider === 'off' ? null : s.model,
+    reason: aiUnavailableReason(),
+    /** Читает ли провайдер PDF и картинки сам, без сторонних библиотек. */
+    reads_documents: s.provider === 'anthropic',
+    /** Откуда взят ключ — чтобы админ понимал, что он меняет. */
+    source: s.source,
+  };
+};
+
+/**
+ * Живая проверка ключа. Без неё человек вставляет ключ, закрывает настройки
+ * и узнаёт о неверном ключе через неделю, когда впервые нажмёт «Собрать».
+ */
+export async function testConnection(): Promise<{ ok: true; provider: string; model: string }> {
+  const s = aiSettings();
+  const reason = aiUnavailableReason();
+  if (reason) throw new AiError(reason, 'ai_disabled');
+
+  const Ping = z.object({ ok: z.boolean() });
+  await generateJson({
+    system: 'Ты отвечаешь строго в заданной форме.',
+    user: 'Верни ok = true.',
+    schema: Ping,
+    shape: 'Поле ok должно быть true.',
+    jsonSchema: {
+      type: 'object', additionalProperties: false,
+      required: ['ok'], properties: { ok: { type: 'boolean' } },
+    },
+    maxTokens: 2000,
+  });
+  return { ok: true, provider: PROVIDER_INFO[s.provider as 'groq'].title, model: s.model };
+}
 
 export { z };

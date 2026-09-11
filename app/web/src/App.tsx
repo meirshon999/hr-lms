@@ -13,6 +13,7 @@ import { Employees } from './pages/hr/Employees';
 import { EmployeeCard } from './pages/hr/EmployeeCard';
 import { Constructor } from './pages/hr/Constructor';
 import { Accounts } from './pages/hr/Accounts';
+import { Settings } from './pages/hr/Settings';
 
 export function App() {
   const { me, loading } = useAuth();
@@ -55,6 +56,7 @@ export function App() {
           <Route path="/hr/constructor" element={<Constructor />} />
           <Route path="/hr/constructor/:positionId" element={<Constructor />} />
           {isAdmin && <Route path="/hr/accounts" element={<Accounts />} />}
+          {isAdmin && <Route path="/hr/settings" element={<Settings />} />}
         </Route>
       </>}
 
