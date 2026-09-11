@@ -189,7 +189,9 @@ export function extractDocx(file: Buffer): ExtractResult {
       'doc_not_word',
     );
   }
-  const text = documentText(readEntry(file, doc).toString('utf8'));
+  const raw = documentText(readEntry(file, doc).toString('utf8'));
+  // Свои заголовки Word важнее наших догадок — размечаем только их отсутствие.
+  const text = headingsOf(raw).length ? raw : markNumberedHeadings(raw);
   return { text, headings: headingsOf(text), kind: 'docx' };
 }
 
@@ -206,8 +208,43 @@ export function extractText(file: Buffer): ExtractResult {
   }
   // Метку порядка байтов записываем кодом, а не самим символом: в исходнике
   // он невидим, и такую строку невозможно прочитать глазами.
-  const text = s.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+  const raw = s.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+  // \u0421\u0432\u043E\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u0432\u0430\u0436\u043D\u0435\u0435 \u043D\u0430\u0448\u0438\u0445 \u0434\u043E\u0433\u0430\u0434\u043E\u043A \u2014 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u043C \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u0445 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u0435.
+  const text = headingsOf(raw).length ? raw : markNumberedHeadings(raw);
   return { text, headings: headingsOf(text), kind: 'text' };
+}
+
+/**
+ * РАЗМЕТКА ЗАГОЛОВКОВ, КОТОРЫЕ ЗАГОЛОВКАМИ НЕ ОФОРМЛЕНЫ.
+ *
+ * Стилями Word на практике почти никто не пользуется: разделы нумеруют руками —
+ * «1. Начало смены», «2. Встреча гостя». Для Word это обычный абзац, и документ
+ * с шестью явными разделами приезжает к нам сплошным текстом.
+ *
+ * Ищем осторожно, чтобы не принять за заголовок пункт списка: строка должна
+ * быть короткой, без точки на конце, а номера — идти подряд от единицы. Меньше
+ * двух таких строк — считаем, что нумерации нет, и ничего не трогаем.
+ */
+export function markNumberedHeadings(text: string): string {
+  const lines = text.split('\n');
+  const found: Array<{ i: number; n: number }> = [];
+
+  lines.forEach((line, i) => {
+    const m = /^\s*(\d{1,2})[.)]\s+(\S.*)$/.exec(line);
+    if (!m) return;
+    const title = m[2].trim();
+    // Пункт списка — это предложение: он длинный и кончается точкой.
+    if (title.length > 70 || /[.,;:]$/.test(title)) return;
+    found.push({ i, n: Number(m[1]) });
+  });
+
+  // Номера должны идти по порядку: 1, 2, 3… Разнобой означает, что это
+  // пункты внутри разных списков, а не разделы документа.
+  const ordered = found.filter((f, k) => f.n === k + 1);
+  if (ordered.length < 2) return text;
+
+  const mark = new Set(ordered.map((f) => f.i));
+  return lines.map((l, i) => (mark.has(i) ? '## ' + l.trim() : l)).join('\n');
 }
 
 export function headingsOf(text: string): Array<{ level: number; title: string }> {

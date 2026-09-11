@@ -7,7 +7,7 @@ import { stamp } from '../clock.ts';
 import { contentSlot } from '../content.ts';
 import { AiError, aiInfo, aiUnavailableReason, readPdf } from '../ai/provider.ts';
 import { MAX_DOC_MB } from '../config.ts';
-import { DocError, extractDocument, headingsOf } from '../docx.ts';
+import { DocError, extractDocument, headingsOf, markNumberedHeadings } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 import { buildTrajectoryPlan, PlanSchema, sourceFor, type Section } from '../ai/plan.ts';
 import {
@@ -68,7 +68,10 @@ export default async function aiRoutes(app: FastifyInstance) {
       try {
         const r = await readPdf(body, actor(req));
         if (!r.text) return reply.code(422).send(err('doc_empty', 'В документе не нашлось текста'));
-        return { text: r.text, headings: headingsOf(r.text), kind: 'pdf', chars: r.text.length };
+        // Модель просили размечать заголовки, но полагаться на просьбу нельзя:
+        // нумерация разделов видна и без неё.
+        const text = headingsOf(r.text).length ? r.text : markNumberedHeadings(r.text);
+        return { text, headings: headingsOf(text), kind: 'pdf', chars: text.length };
       } catch (e) {
         if (e instanceof AiError) {
           const status = e.code === 'doc_pdf' ? 422
