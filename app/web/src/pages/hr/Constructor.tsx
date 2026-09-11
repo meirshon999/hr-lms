@@ -145,8 +145,8 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
         <div style={{ display: 'flex', gap: 8 }}>
           {ai?.enabled && (
             <button className="btn ghost sm" onClick={() => setPlanning(true)}
-              title="Загрузить регламент целиком и получить готовую структуру">
-              ✨ Собрать из документа
+              title="Загрузить документы и получить готовую траекторию целиком">
+              ✨ Собрать из документов
             </button>
           )}
           <button className="btn ghost sm" onClick={() => setPreview(true)}>Предпросмотр</button>
@@ -191,6 +191,7 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
           positionId={positionId}
           positionName={positionName}
           readsPdf={!!ai?.reads_documents}
+          hasContent={regular.length > 0}
           onClose={() => setPlanning(false)}
           onApplied={refresh}
         />

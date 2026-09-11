@@ -114,6 +114,19 @@ export const PlanSchema = z.object({
 
 export type TrajectoryPlan = z.infer<typeof PlanSchema>;
 
+/**
+ * То же дерево, но пустое допустимо. Разные схемы у того, что присылает
+ * модель, и у того, что присылает человек: от модели пустой план — неудача,
+ * а человек мог выбросить все блоки или загрузить только документы о компании,
+ * и запрещать ему это значило бы заставлять создавать ненужный блок.
+ */
+export const PlanApplySchema = z.object({
+  blocks: z.array(z.object({
+    title: z.string().min(2).max(120),
+    lessons: z.array(PlannedLesson).min(0).max(20),
+  })).max(12),
+});
+
 const PLAN_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,

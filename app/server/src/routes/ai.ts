@@ -9,7 +9,8 @@ import { AiError, aiInfo, aiUnavailableReason, readPdf } from '../ai/provider.ts
 import { MAX_DOC_MB } from '../config.ts';
 import { DocError, extractDocument, headingsOf, markNumberedHeadings } from '../docx.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
-import { buildTrajectoryPlan, PlanSchema, sourceFor, type Section } from '../ai/plan.ts';
+import { buildTrajectoryPlan, PlanApplySchema, sourceFor, type Section } from '../ai/plan.ts';
+import { buildPreOnboarding, PreSchema } from '../ai/pre.ts';
 import {
   AttestationApplySchema, buildAttestationDraft, suggestedCount,
 } from '../ai/attestation.ts';
@@ -121,28 +122,57 @@ export default async function aiRoutes(app: FastifyInstance) {
     const traj = trajectoryOf((req.params as any).positionId);
     if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
 
-    const p = z.object({ source_text: z.string() }).safeParse(req.body);
+    const p = z.object({
+      /** Документы обучения — из них вырастут блоки, уроки и тесты. */
+      source_text: z.string().optional(),
+      /** Документы «о компании» — из них вырастут материалы пре-онбординга. */
+      pre_text: z.string().optional(),
+    }).safeParse(req.body);
     if (!p.success) return reply.code(400).send(err('bad_request', 'Нужен текст документа'));
+
+    const source = (p.data.source_text ?? '').trim();
+    const preSource = (p.data.pre_text ?? '').trim();
+    if (!source && !preSource) {
+      return reply.code(400).send(err('bad_request', 'Загрузите хотя бы один документ'));
+    }
 
     const pos = one<{ name: string }>(
       'SELECT name FROM positions WHERE id = ?', (req.params as any).positionId);
 
     try {
-      const r = await buildTrajectoryPlan(p.data.source_text, {
-        positionName: pos?.name ?? 'сотрудник',
-        actor: actor(req),
-      });
+      // Каркас и знакомство с компанией — два разных запроса: у них разные
+      // правила письма, и смешивать их в один значит получить середину,
+      // которая не годится ни туда, ни сюда.
+      const r = source
+        ? await buildTrajectoryPlan(source, { positionName: pos?.name ?? 'сотрудник', actor: actor(req) })
+        : null;
+      const pre = preSource
+        ? await buildPreOnboarding(preSource, { actor: actor(req) })
+        : null;
+
       run(
-        `INSERT INTO ai_plans (id, trajectory_id, source_text, sections_json, plan_json, provider, model, created_by, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?)
+        `INSERT INTO ai_plans (id, trajectory_id, source_text, sections_json, plan_json,
+                               pre_source, pre_json, filled_json, attestation_json,
+                               provider, model, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?,NULL,NULL,?,?,?,?)
          ON CONFLICT(trajectory_id) DO UPDATE SET
            source_text = excluded.source_text, sections_json = excluded.sections_json,
-           plan_json = excluded.plan_json, provider = excluded.provider,
+           plan_json = excluded.plan_json, pre_source = excluded.pre_source,
+           pre_json = excluded.pre_json, filled_json = NULL, attestation_json = NULL,
+           provider = excluded.provider,
            model = excluded.model, created_by = excluded.created_by, created_at = excluded.created_at`,
-        uuid(), traj.id, p.data.source_text, JSON.stringify(r.sections),
-        JSON.stringify(r.data), r.provider, r.model, actor(req), stamp(),
+        uuid(), traj.id, source, JSON.stringify(r?.sections ?? []),
+        JSON.stringify(r?.data ?? { blocks: [] }), preSource,
+        pre ? JSON.stringify(pre.data) : null,
+        r?.provider ?? pre?.provider ?? '', r?.model ?? pre?.model ?? '', actor(req), stamp(),
       );
-      return { plan: r.data, sections: outline(r.sections), provider: r.provider, model: r.model };
+      return {
+        plan: r?.data ?? { blocks: [] },
+        pre: pre?.data ?? null,
+        sections: outline(r?.sections ?? []),
+        provider: r?.provider ?? pre?.provider,
+        model: r?.model ?? pre?.model,
+      };
     } catch (e) {
       if (e instanceof AiError) {
         const status = e.code === 'ai_rate_limited' ? 429
@@ -161,10 +191,125 @@ export default async function aiRoutes(app: FastifyInstance) {
     if (!row) return reply.code(404).send(err('not_found', 'Плана нет'));
     return {
       plan: JSON.parse(row.plan_json),
+      pre: row.pre_json ? JSON.parse(row.pre_json) : null,
+      /** Уроки, которые уже собраны: ключ «блок:урок». */
+      filled: row.filled_json ? JSON.parse(row.filled_json) : {},
+      attestation: row.attestation_json ? JSON.parse(row.attestation_json) : null,
       sections: outline(JSON.parse(row.sections_json)),
       provider: row.provider, model: row.model,
       created_by: row.created_by, created_at: row.created_at,
     };
+  });
+
+  /**
+   * ЗАПОЛНЕНИЕ ОДНОГО УРОКА ПЛАНА.
+   *
+   * Уроки собираются по одному, а не «всё за один запрос», по трём причинам:
+   * человек видит, как растёт дерево, и не смотрит три минуты в пустой экран;
+   * оборвавшаяся связь стоит одного урока, а не всей работы; и если каркас
+   * оказался не тот, можно остановиться на втором уроке и не платить за
+   * оставшиеся двадцать.
+   *
+   * В каталог по-прежнему ничего не попадает: собранное лежит в плане,
+   * пока человек не нажмёт «Создать» (C-13).
+   */
+  app.post('/ai/trajectories/:positionId/plan/fill', async (req, reply) => {
+    const reason = aiUnavailableReason();
+    if (reason) return reply.code(503).send(err('ai_disabled', reason));
+
+    const traj = trajectoryOf((req.params as any).positionId);
+    if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
+    const row = planRow(traj.id);
+    if (!row) return reply.code(404).send(err('not_found', 'Сначала соберите план'));
+
+    const p = z.object({
+      block: z.number().int().min(0),
+      lesson: z.number().int().min(0),
+    }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send(err('bad_request', 'Нужны номера блока и урока'));
+
+    const plan = JSON.parse(row.plan_json);
+    const block = plan.blocks?.[p.data.block];
+    const planned = block?.lessons?.[p.data.lesson];
+    if (!planned) return reply.code(404).send(err('not_found', 'Такого урока в плане нет'));
+
+    const sections: Section[] = JSON.parse(row.sections_json);
+    const src = sourceFor(sections, planned.sections);
+    if (!src) {
+      return reply.code(422).send(err('no_source', 'К этому уроку не привязан текст документа'));
+    }
+
+    const pos = one<{ name: string }>(
+      'SELECT name FROM positions WHERE id = ?', (req.params as any).positionId);
+
+    try {
+      const r = await buildLessonDraft(src, {
+        lessonTitle: planned.title,
+        positionName: pos?.name ?? null,
+        actor: actor(req),
+      });
+      const filled = row.filled_json ? JSON.parse(row.filled_json) : {};
+      filled[`${p.data.block}:${p.data.lesson}`] = r.data;
+      run('UPDATE ai_plans SET filled_json = ? WHERE trajectory_id = ?',
+        JSON.stringify(filled), traj.id);
+      return { draft: r.data, block: p.data.block, lesson: p.data.lesson };
+    } catch (e) {
+      if (e instanceof AiError) {
+        const status = e.code === 'ai_rate_limited' ? 429
+          : e.code === 'ai_disabled' ? 503
+          : e.code.startsWith('source_') ? 422 : 502;
+        return reply.code(status).send(err(e.code, e.message));
+      }
+      app.log.error(e);
+      return reply.code(502).send(err('ai_failed', 'Не удалось собрать урок — попробуйте ещё раз'));
+    }
+  });
+
+  /**
+   * Аттестация по собранным урокам. Отдельным шагом, потому что вопросы должны
+   * опираться на готовые материалы: пока уроки пустые, спрашивать не о чем.
+   */
+  app.post('/ai/trajectories/:positionId/plan/attestation', async (req, reply) => {
+    const reason = aiUnavailableReason();
+    if (reason) return reply.code(503).send(err('ai_disabled', reason));
+
+    const traj = trajectoryOf((req.params as any).positionId);
+    if (!traj) return reply.code(404).send(err('not_found', 'Траектория не найдена'));
+    const row = planRow(traj.id);
+    if (!row) return reply.code(404).send(err('not_found', 'Сначала соберите план'));
+
+    const filled: Record<string, any> = row.filled_json ? JSON.parse(row.filled_json) : {};
+    const drafts = Object.values(filled);
+    if (!drafts.length) {
+      return reply.code(422).send(err('no_lessons', 'Сначала соберите уроки — по пустым спрашивать нечего'));
+    }
+
+    const pos = one<{ name: string }>(
+      'SELECT name FROM positions WHERE id = ?', (req.params as any).positionId);
+
+    try {
+      const r = await buildAttestationDraft({
+        positionName: pos?.name ?? 'сотрудник',
+        lessons: drafts.map((d) => ({ title: d.title, material: d.material ?? '' })),
+        // Вопросы аттестации не должны повторять урочные — иначе она проверяет
+        // память о тесте, а не понимание работы.
+        askedInLessons: drafts.flatMap((d) => (d.questions ?? []).map((q: any) => q.text)),
+        count: suggestedCount(drafts.length),
+        actor: actor(req),
+      });
+      run('UPDATE ai_plans SET attestation_json = ? WHERE trajectory_id = ?',
+        JSON.stringify(r.data), traj.id);
+      return { attestation: r.data, based_on: drafts.length };
+    } catch (e) {
+      if (e instanceof AiError) {
+        const status = e.code === 'ai_rate_limited' ? 429
+          : e.code === 'ai_disabled' ? 503
+          : e.code.startsWith('source_') || e.code.startsWith('no_') ? 422 : 502;
+        return reply.code(status).send(err(e.code, e.message));
+      }
+      app.log.error(e);
+      return reply.code(502).send(err('ai_failed', 'Не удалось собрать аттестацию — попробуйте ещё раз'));
+    }
   });
 
   app.delete('/ai/trajectories/:positionId/plan', async (req, reply) => {
@@ -190,14 +335,52 @@ export default async function aiRoutes(app: FastifyInstance) {
     if (!row) return reply.code(404).send(err('not_found', 'Сначала соберите план'));
 
     // Человек мог править дерево, поэтому применяем то, что он прислал.
-    const p = z.object({ plan: PlanSchema }).safeParse(req.body);
+    const p = z.object({
+      plan: PlanApplySchema,
+      /** Материалы «о компании» — человек мог их поправить или выбросить. */
+      pre: PreSchema.optional(),
+      /** Вопросы аттестации — тоже после правки человеком. */
+      attestation: AttestationApplySchema.optional(),
+      /**
+       * Что делать с тем, что в траектории уже есть. `append` — новое встаёт
+       * после старого; `replace` — старое удаляется. Умолчание безопасное:
+       * стереть готовую траекторию можно только осознанно.
+       */
+      mode: z.enum(['append', 'replace']).default('append'),
+      pass_mark_pct: z.number().int().min(50).max(100).optional(),
+    }).safeParse(req.body);
     if (!p.success) return reply.code(400).send(err('bad_request', 'План не той формы'));
 
     const sections: Section[] = JSON.parse(row.sections_json);
+    const filled: Record<string, any> = row.filled_json ? JSON.parse(row.filled_json) : {};
+    const passMark = p.data.pass_mark_pct ?? 70;
+
+    // Замена: снимаем прежние обычные блоки целиком. Аттестационный блок
+    // остаётся — он один на траекторию, в нём меняются только вопросы.
+    if (p.data.mode === 'replace') {
+      run(`DELETE FROM blocks WHERE trajectory_id = ? AND kind = 'regular'`, traj.id);
+      if (p.data.pre) run('DELETE FROM pre_onboarding_items WHERE trajectory_id = ?', traj.id);
+    }
+
     let blocks = 0;
     let lessons = 0;
+    let filledCount = 0;
 
-    for (const b of p.data.plan.blocks) {
+    // ---------- материалы о компании ----------
+    let preItems = 0;
+    if (p.data.pre) {
+      const maxPre = one<{ n: number }>(
+        'SELECT COALESCE(MAX(ord),0) n FROM pre_onboarding_items WHERE trajectory_id = ?', traj.id)!.n;
+      p.data.pre.items.forEach((it, i) => {
+        run(`INSERT INTO pre_onboarding_items (id, trajectory_id, ord, title, content_type, text_body)
+             VALUES (?,?,?,?,'text',?)`,
+          uuid(), traj.id, maxPre + i + 1, it.title, it.text);
+        preItems++;
+      });
+    }
+
+    // ---------- блоки, уроки, материалы и тесты ----------
+    p.data.plan.blocks.forEach((b, bi) => {
       const blockId = uuid();
       const maxRegular = one<{ n: number }>(
         `SELECT COALESCE(MAX(ord),0) n FROM blocks WHERE trajectory_id = ? AND kind = 'regular'`,
@@ -209,22 +392,76 @@ export default async function aiRoutes(app: FastifyInstance) {
         maxRegular + 2, traj.id);
       blocks++;
 
-      b.lessons.forEach((l, i) => {
+      b.lessons.forEach((l, li) => {
         const lessonId = uuid();
+        const draft = filled[`${bi}:${li}`];
         run('INSERT INTO lessons (id, block_id, ord, title, everywhere, content_per_location) VALUES (?,?,?,?,1,0)',
-          lessonId, blockId, i + 1, l.title);
+          lessonId, blockId, li + 1, draft?.title || l.title);
+
+        // Исходник кладём всегда: кадровику потом не искать нужный абзац
+        // в сорокастраничном регламенте заново.
         const src = sourceFor(sections, l.sections);
         if (src) {
           run('INSERT OR REPLACE INTO ai_lesson_sources (lesson_id, source_text) VALUES (?,?)',
             lessonId, src);
         }
+
+        // Урок, который ИИ успел собрать, приходит с материалом и тестом.
+        // Несобранный остаётся пустым — это не поломка, его заполнят позже.
+        if (draft?.material) {
+          run(`INSERT INTO materials (id, lesson_id, location_id, content_type, text_body)
+               VALUES (?,?,?,'text',?)`,
+            uuid(), lessonId, SHARED, draft.material);
+        }
+        if (draft?.questions?.length) {
+          const testId = uuid();
+          run('INSERT INTO tests (id, lesson_id, location_id, pass_mark_pct) VALUES (?,?,?,?)',
+            testId, lessonId, SHARED, passMark);
+          draft.questions.forEach((q: any, qi: number) => {
+            run('INSERT INTO questions (id, test_id, ord, text, options, correct_index) VALUES (?,?,?,?,?,?)',
+              uuid(), testId, qi + 1, q.text, JSON.stringify(q.options), q.correct_index);
+          });
+          filledCount++;
+        }
         lessons++;
       });
+    });
+
+    // ---------- аттестация ----------
+    let attestationQuestions = 0;
+    if (p.data.attestation) {
+      const attBlock = one<{ id: string }>(
+        `SELECT id FROM blocks WHERE trajectory_id = ? AND kind = 'attestation'`, traj.id);
+      if (attBlock) {
+        const existing = one<{ id: string }>(
+          'SELECT id FROM tests WHERE block_id = ? AND location_id = ?', attBlock.id, SHARED);
+        const testId = existing?.id ?? uuid();
+        if (existing) {
+          run('UPDATE tests SET pass_mark_pct = ? WHERE id = ?', passMark, testId);
+          run('DELETE FROM questions WHERE test_id = ?', testId);
+        } else {
+          run('INSERT INTO tests (id, block_id, location_id, pass_mark_pct) VALUES (?,?,?,?)',
+            testId, attBlock.id, SHARED, passMark);
+        }
+        p.data.attestation.questions.forEach((q, i) => {
+          run('INSERT INTO questions (id, test_id, ord, text, options, correct_index) VALUES (?,?,?,?,?,?)',
+            uuid(), testId, i + 1, q.text, JSON.stringify(q.options), q.correct_index);
+          attestationQuestions++;
+        });
+      }
     }
 
     run('DELETE FROM ai_plans WHERE trajectory_id = ?', traj.id);
-    audit(actor(req), 'ai_plan_apply', null, blocks + ' блоков, ' + lessons + ' уроков');
-    return { blocks, lessons };
+    audit(actor(req), 'ai_plan_apply', null,
+      `${blocks} блоков, ${lessons} уроков (${filledCount} с тестом)`
+      + (preItems ? `, ${preItems} материалов о компании` : '')
+      + (attestationQuestions ? `, аттестация из ${attestationQuestions} вопросов` : '')
+      + (p.data.mode === 'replace' ? ', прежнее заменено' : ''));
+    return {
+      blocks, lessons, filled: filledCount,
+      pre: preItems, attestation: attestationQuestions,
+      mode: p.data.mode,
+    };
   });
 
   /** Кусок документа, из которого вырос урок: подставляется в поле сборки. */

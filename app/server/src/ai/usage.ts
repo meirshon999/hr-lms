@@ -75,6 +75,7 @@ export function usageSummary(): UsageSummary {
 export const ACTION_TITLE: Record<string, string> = {
   lesson: 'Сборка урока',
   plan: 'Разбор регламента в траекторию',
+  pre: 'Материалы о компании',
   attestation: 'Финальная аттестация',
   pdf: 'Чтение PDF',
   test: 'Проверка ключа',

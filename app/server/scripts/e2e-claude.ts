@@ -42,6 +42,11 @@ const KEY = 'sk-ant-test0123456789abcdefgh';
 
 /** Что вернуть на следующий запрос. Меняем по ходу проверки. */
 let reply: { status: number; body: unknown } = { status: 200, body: null };
+/**
+ * Очередь ответов для шагов, где запросов подряд несколько: разбор документов
+ * спрашивает модель дважды — про каркас и про материалы о компании.
+ */
+let queue: Array<{ status: number; body: unknown }> = [];
 /** Что пришло в последнем запросе — по нему и проверяем, верно ли мы спрашиваем. */
 let lastRequest: any = null;
 
@@ -70,6 +75,68 @@ const LESSON = JSON.stringify({
   ],
 });
 
+/** Документ обучения: заголовки размечены, как их размечает читатель Word. */
+const TRAINING_DOC = [
+  '# Регламент хостес',
+  '',
+  '## Начало смены',
+  'Хостес выходит за тридцать минут до открытия зала, проверяет схему посадки '
+  + 'на текущий день и список броней в журнале. Форма: белая рубашка, чёрный низ, '
+  + 'бейдж с именем слева на груди. Телефон остаётся в шкафчике.',
+  '',
+  '## Встреча гостя',
+  'Поздороваться в течение пятнадцати секунд с момента входа гостя, стоя и '
+  + 'с зрительным контактом. Уточнить, есть ли бронь и на сколько человек. '
+  + 'Проводить до стола, отодвинуть стул, передать меню в раскрытом виде.',
+  '',
+  '## Брони и лист ожидания',
+  'Опаздывающего гостя ждут двадцать минут, после чего стол уходит в общий фонд. '
+  + 'Бронь на караоке подтверждается звонком за три часа. Время ожидания называют '
+  + 'с запасом в пять минут: лучше позвать раньше, чем передержать.',
+].join('\n');
+
+/** Документ о компании — из него вырастает пре-онбординг. */
+const COMPANY_DOC = 'Pingwin Premium — сеть развлечений под одной крышей: '
+  + 'рестораны, боулинг и караоке. Мы про сервис, скорость и атмосферу. '
+  + 'Для гостя нет «не мой участок»: сотрудник отвечает за впечатление целиком. '
+  + 'Три зоны на площадке — зал ресторана, дорожки боулинга и караоке-кабинеты, '
+  + 'и гость свободно перемещается между ними в течение вечера. Поэтому '
+  + 'ориентироваться нужно на всей площадке: где бар, кухня, гардероб и туалеты.';
+
+const PLAN = JSON.stringify({
+  blocks: [
+    { title: 'Начало работы', lessons: [{ title: 'Начало смены', sections: [1] }] },
+    { title: 'Работа с гостем', lessons: [{ title: 'Встреча гостя', sections: [2] }] },
+  ],
+});
+
+const PRE = JSON.stringify({
+  items: [
+    {
+      title: 'Три формата под одной крышей',
+      text: 'Pingwin Premium — это рестораны, боулинг и караоке на одной площадке. '
+        + 'Гость свободно ходит между зонами в течение вечера, и впечатление у него '
+        + 'складывается общее, а не по каждой зоне отдельно.',
+    },
+    {
+      title: 'Чего мы ждём от вас',
+      text: 'Для гостя не существует «не мой участок». Если вопрос задали вам, '
+        + 'ответ ищете вы, а не отправляете гостя к другому сотруднику. '
+        + 'Это главное, что отличает работу у нас.',
+    },
+  ],
+});
+
+const ATTESTATION = JSON.stringify({
+  questions: [
+    { text: 'За сколько минут до открытия зала выходит хостес?', options: ['15', '30', '60'], correct_index: 1 },
+    { text: 'Сколько держат стол за опоздавшим гостем?', options: ['10 минут', '20 минут', 'до конца вечера'], correct_index: 1 },
+    { text: 'За сколько часов подтверждают бронь караоке?', options: ['За час', 'За три часа', 'За сутки'], correct_index: 1 },
+    { text: 'Как называют гостю время ожидания?', options: ['Точно', 'С запасом в пять минут', 'Не называют'], correct_index: 1 },
+    { text: 'Где во время смены находится личный телефон хостес?', options: ['В шкафчике', 'На стойке', 'В кармане'], correct_index: 0 },
+  ],
+});
+
 function handler(req: IncomingMessage, res: ServerResponse) {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -79,8 +146,9 @@ function handler(req: IncomingMessage, res: ServerResponse) {
     } catch {
       lastRequest = { url: req.url, headers: req.headers, body: null };
     }
-    res.writeHead(reply.status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(reply.body ?? { type: 'error', error: { type: 'api_error', message: 'mock' } }));
+    const r = queue.length ? queue.shift()! : reply;
+    res.writeHead(r.status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(r.body ?? { type: 'error', error: { type: 'api_error', message: 'mock' } }));
   });
 }
 
@@ -196,6 +264,97 @@ async function main() {
 
   check('неудачные обращения тоже посчитаны',
     (await j('/settings/ai', { h: adm })).d.usage.failed >= 3);
+
+  // ================= вся траектория из документов, одним заходом =================
+  //
+  // То, ради чего всё затевалось: человек приносит документы, а не создаёт
+  // блоки руками. Проверяем весь путь — разбор, заполнение уроков, аттестацию
+  // и создание — и главное: до нажатия «Создать» в каталоге не должно
+  // появиться ничего (C-13).
+
+  reply = { status: 200, body: null };
+  const posId = (await j('/positions', {
+    method: 'POST', h: hr, body: { name: `Хостес ${Date.now().toString().slice(-6)}` },
+  })).d?.id;
+  check('должность заведена', !!posId);
+
+  queue = [answer(PLAN), answer(PRE)];
+  const parsed = await j(`/ai/trajectories/${posId}/plan`, {
+    method: 'POST', h: hr, body: { source_text: TRAINING_DOC, pre_text: COMPANY_DOC },
+  });
+  check('документы разбираются за один заход',
+    parsed.s === 200 && parsed.d?.plan?.blocks?.length === 2,
+    `${parsed.s} ${JSON.stringify(parsed.d?.error ?? '')}`);
+  check('материалы о компании собраны тем же нажатием',
+    parsed.d?.pre?.items?.length === 2,
+    JSON.stringify(parsed.d?.pre?.items?.map((i: any) => i.title)));
+
+  const emptyYet = (await j(`/trajectories/${posId}`, { h: hr })).d;
+  check('после разбора каталог всё ещё пуст',
+    emptyYet.blocks.filter((b: any) => b.kind === 'regular').length === 0);
+
+  // ---------- уроки заполняются по одному, а не все разом ----------
+  queue = [];
+  reply = answer(LESSON);
+  const fill1 = await j(`/ai/trajectories/${posId}/plan/fill`, {
+    method: 'POST', h: hr, body: { block: 0, lesson: 0 },
+  });
+  check('урок плана заполняется материалом и тестом',
+    fill1.s === 200 && !!fill1.d?.draft?.material && fill1.d?.draft?.questions?.length === 3,
+    `${fill1.s} ${JSON.stringify(fill1.d?.error ?? '')}`);
+  await j(`/ai/trajectories/${posId}/plan/fill`, { method: 'POST', h: hr, body: { block: 1, lesson: 0 } });
+
+  check('несуществующий урок плана — 404',
+    (await j(`/ai/trajectories/${posId}/plan/fill`, {
+      method: 'POST', h: hr, body: { block: 9, lesson: 9 },
+    })).s === 404);
+
+  const saved = (await j(`/ai/trajectories/${posId}/plan`, { h: hr })).d;
+  check('собранные уроки хранятся в плане, а не в каталоге',
+    Object.keys(saved.filled ?? {}).length === 2, JSON.stringify(Object.keys(saved.filled ?? {})));
+
+  // ---------- аттестация по собранным урокам ----------
+  reply = answer(ATTESTATION);
+  const att = await j(`/ai/trajectories/${posId}/plan/attestation`, { method: 'POST', h: hr });
+  check('аттестация собирается по собранным урокам',
+    att.s === 200 && att.d?.attestation?.questions?.length === 5 && att.d?.based_on === 2,
+    `${att.s} ${JSON.stringify(att.d?.error ?? '')}`);
+
+  const stillEmpty = (await j(`/trajectories/${posId}`, { h: hr })).d;
+  check('перед подтверждением каталог по-прежнему пуст',
+    stillEmpty.blocks.filter((b: any) => b.kind === 'regular').length === 0);
+
+  // ---------- одно нажатие создаёт всё ----------
+  const applied = await j(`/ai/trajectories/${posId}/plan/apply`, {
+    method: 'POST', h: hr,
+    body: {
+      plan: saved.plan,
+      pre: parsed.d.pre,
+      attestation: att.d.attestation,
+      mode: 'append',
+    },
+  });
+  check('одно нажатие создаёт блоки, уроки, материалы и аттестацию',
+    applied.s === 200 && applied.d?.blocks === 2 && applied.d?.lessons === 2
+    && applied.d?.filled === 2 && applied.d?.pre === 2 && applied.d?.attestation === 5,
+    JSON.stringify(applied.d));
+
+  const built = (await j(`/trajectories/${posId}`, { h: hr })).d;
+  const regular = built.blocks.filter((b: any) => b.kind === 'regular');
+  check('блоки названы так, как в плане', regular.length === 2, String(regular.length));
+  const firstLesson = regular[0]?.lessons?.[0];
+  check('урок пришёл не пустым: есть материал и тест',
+    !!firstLesson?.material?.text_body && (firstLesson?.test?.questions ?? []).length === 3,
+    JSON.stringify({ m: !!firstLesson?.material, q: firstLesson?.test?.questions?.length }));
+  check('материалы о компании попали в пре-онбординг',
+    (built.pre_onboarding ?? []).length === 2,
+    String((built.pre_onboarding ?? []).length));
+  const attBlock = built.blocks.find((b: any) => b.kind === 'attestation');
+  check('аттестация получила свои вопросы',
+    (attBlock?.test?.questions ?? []).length === 5, String(attBlock?.test?.questions?.length));
+
+  check('использованный план убран, чтобы не применился дважды',
+    (await j(`/ai/trajectories/${posId}/plan`, { h: hr })).s === 404);
 
   // ---------- убираем за собой ----------
   await j('/settings/ai', { method: 'DELETE', h: adm });

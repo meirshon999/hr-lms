@@ -295,6 +295,12 @@ export function migrate() {
 
   db.exec(SCHEMA);
   addColumnIfMissing('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
+  // План теперь собирает не только каркас: материалы «о компании» и уже
+  // заполненные уроки лежат рядом с ним, пока человек их не подтвердит.
+  addColumnIfMissing('ai_plans', 'pre_json', 'TEXT');
+  addColumnIfMissing('ai_plans', 'pre_source', 'TEXT');
+  addColumnIfMissing('ai_plans', 'filled_json', 'TEXT');
+  addColumnIfMissing('ai_plans', 'attestation_json', 'TEXT');
   setState('schema_version', String(SCHEMA_VERSION));
 }
 
