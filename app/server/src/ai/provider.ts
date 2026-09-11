@@ -1,6 +1,7 @@
 import { z, type ZodType } from 'zod';
 import { aiSettings, PROVIDER_INFO, type AiSettings } from './settings.ts';
 import { recordUsage } from './usage.ts';
+import { ANTHROPIC_BASE_URL } from '../config.ts';
 
 /**
  * СЛОЙ ПРОВАЙДЕРА ИИ.
@@ -11,8 +12,8 @@ import { recordUsage } from './usage.ts';
  *
  * Почему разные способы обращения. У Groq и OpenAI формат запроса одинаковый —
  * их обслуживает один и тот же код, различаются только адрес, ключ и модель.
- * К Claude идём через официальный SDK: у него структурированный ответ — часть
- * протокола, модель физически не может вернуть поле не той формы.
+ * К Claude идём через официальный SDK: у него свой протокол и свой вход для
+ * PDF. Форма ответа при этом одна на всех — наша JSON-схема.
  */
 
 export class AiError extends Error {
@@ -48,9 +49,9 @@ export interface AiRequest<T> {
   /** Форма ответа. Она же проверка: не подошло — считаем, что модель не справилась. */
   schema: ZodType<T>;
   /**
-   * Та же форма как JSON Schema. У Claude схему навязывает SDK, у остальных —
-   * response_format. Без неё модель придумывает свои имена полей: на этом
-   * регламенте она вернула «content» вместо «material» и лишнее поле сверху.
+   * Та же форма как JSON Schema — её понимают все три провайдера. Без неё
+   * модель придумывает свои имена полей: на этом регламенте она вернула
+   * «content» вместо «material» и лишнее поле сверху.
    */
   jsonSchema: Record<string, unknown>;
   /** Пояснения, которые схемой не выразить: сколько вопросов, сколько вариантов. */
@@ -116,26 +117,84 @@ export async function generateJson<T>(req: AiRequest<T>): Promise<AiResult<T>> {
 async function viaAnthropic<T>(req: AiRequest<T>, s: AiSettings): Promise<AiResult<T>> {
   // Импорт внутри функции: на бесплатном режиме библиотека не нужна и не грузится.
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const { zodOutputFormat } = await import('@anthropic-ai/sdk/helpers/zod');
-
-  const client = new Anthropic({ apiKey: s.apiKey });
-  const response = await client.messages.parse({
-    model: s.model,
-    max_tokens: req.maxTokens ?? 16000,
-    system: req.system,
-    messages: [{ role: 'user', content: `${req.user}\n\nФорма ответа:\n${req.shape}` }],
-    output_config: { format: zodOutputFormat(req.schema as any) },
+  const client = new Anthropic({
+    apiKey: s.apiKey,
+    ...(ANTHROPIC_BASE_URL ? { baseURL: ANTHROPIC_BASE_URL } : {}),
   });
 
-  // parsed_output пустой, если разобрать не удалось — молча продолжать нельзя.
-  if (!response.parsed_output) throw new AiError('Модель вернула ответ не той формы');
+  // Схему отдаём ту же, что и остальным провайдерам, а ответ разбираем сами.
+  // Хелпер `zodOutputFormat` из SDK тут не годится: он пропускает схему через
+  // Zod v4, а у нас Zod v3 — проверено, падает с «cannot read def» ещё до
+  // отправки запроса. Своя JSON-схема уже написана, и одна форма на всех
+  // провайдеров вернее двух, которые могут разъехаться.
+  let response;
+  try {
+    response = await client.messages.create({
+      model: s.model,
+      max_tokens: req.maxTokens ?? 16000,
+      system: req.system,
+      messages: [{ role: 'user', content: `${req.user}
+
+Форма ответа:
+${req.shape}` }],
+      output_config: { format: { type: 'json_schema', schema: req.jsonSchema } },
+    });
+  } catch (e: any) {
+    throw anthropicError(e, s);
+  }
+
+  const text = response.content
+    .map((c) => (c.type === 'text' ? c.text : ''))
+    .join('')
+    .trim();
+  if (!text) {
+    console.error('[ai] Claude вернул пустой ответ, stop_reason:', response.stop_reason);
+    throw new AiError('Модель вернула пустой ответ — попробуйте ещё раз', 'ai_bad_shape');
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stripCodeFence(text));
+  } catch {
+    throw new AiError('Модель вернула не JSON', 'ai_bad_shape');
+  }
+
+  const parsed = req.schema.safeParse(raw);
+  if (!parsed.success) {
+    console.error('[ai] ответ Claude не прошёл схему:',
+      JSON.stringify(parsed.error.issues.slice(0, 5)));
+    throw new AiError('Модель вернула ответ не той формы — попробуйте ещё раз', 'ai_bad_shape');
+  }
+
   return {
-    data: response.parsed_output as T,
+    data: parsed.data,
     provider: 'anthropic',
     model: s.model,
     tokensIn: response.usage?.input_tokens ?? 0,
     tokensOut: response.usage?.output_tokens ?? 0,
   };
+}
+
+/**
+ * Ошибка Claude — человеку. Без этого неверный ключ приходит как «ошибка 502,
+ * подробности в журнале»: тому, кто только что его вставил, это ничего не
+ * говорит, а причина — ровно в том поле, которое он заполнял.
+ */
+function anthropicError(e: any, s: AiSettings): AiError {
+  const status = e?.status;
+  if (status === 401 || status === 403) {
+    return new AiError('Ключ не принят провайдером — проверьте его в настройках', 'ai_bad_key');
+  }
+  if (status === 429) return new AiError('Лимит провайдера исчерпан — попробуйте позже', 'ai_rate_limited');
+  const msg = String(e?.message ?? e);
+  if (status === 404 || /model/i.test(msg)) {
+    return new AiError(`Модель «${s.model}» провайдеру неизвестна — впишите другую в настройках`, 'ai_bad_model');
+  }
+  if (status === 400 && /credit|balance/i.test(msg)) {
+    return new AiError('На счету провайдера нет средств — пополните баланс в кабинете', 'ai_bad_key');
+  }
+  console.error('[ai] anthropic:', msg.slice(0, 500));
+  return new AiError('Провайдер ответил ошибкой — подробности в журнале сервера');
 }
 
 /**
@@ -160,7 +219,10 @@ export async function readPdf(file: Buffer, actor: string): Promise<{ text: stri
   }
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: s.apiKey });
+  const client = new Anthropic({
+    apiKey: s.apiKey,
+    ...(ANTHROPIC_BASE_URL ? { baseURL: ANTHROPIC_BASE_URL } : {}),
+  });
 
   let response;
   try {
@@ -185,13 +247,7 @@ export async function readPdf(file: Buffer, actor: string): Promise<{ text: stri
     });
   } catch (e: any) {
     recordUsage({ actor, action: 'pdf', provider: s.provider, model: s.model, tokensIn: 0, tokensOut: 0, ok: false });
-    const status = e?.status;
-    if (status === 401 || status === 403) {
-      throw new AiError('Ключ не принят провайдером — проверьте его в настройках', 'ai_bad_key');
-    }
-    if (status === 429) throw new AiError('Лимит провайдера исчерпан — попробуйте позже', 'ai_rate_limited');
-    console.error('[ai] чтение PDF:', e?.message ?? e);
-    throw new AiError('Не удалось прочитать PDF — попробуйте ещё раз или сохраните как .docx', 'doc_failed');
+    throw anthropicError(e, s);
   }
 
   recordUsage({
@@ -333,6 +389,8 @@ export const aiInfo = () => {
     reads_documents: s.provider === 'anthropic',
     /** Откуда взят ключ — чтобы админ понимал, что он меняет. */
     source: s.source,
+    /** Адрес Claude подменён: так бывает у прокси и у наших проверок. */
+    base_url_overridden: !!ANTHROPIC_BASE_URL,
   };
 };
 

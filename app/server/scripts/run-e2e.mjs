@@ -23,9 +23,11 @@ const SUITES = [
   ['e2e-plan', 'план траектории из документа'],
   ['e2e-attestation', 'финальная аттестация одной кнопкой'],
   ['e2e-settings', 'настройки ИИ и свой ключ'],
+  ['e2e-claude', 'путь Claude на подставном сервере'],
 ];
 
 const PORT = Number(process.env.LMS_TEST_PORT ?? 3999);
+const MOCK_AI_PORT = Number(process.env.LMS_MOCK_AI_PORT ?? 3998);
 const URL = `http://localhost:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'lms-e2e-'));
 
@@ -40,6 +42,9 @@ const server = spawn(
       UPLOAD_DIR: join(dir, 'uploads'),
       LMS_DEV_TOOLS: '1',
       NODE_ENV: 'development',
+      // Путь Claude проверяется на подставном сервере: настоящий стоит денег,
+      // а непроверенный путь — первого запроса с настоящим ключом.
+      ANTHROPIC_BASE_URL: `http://localhost:${MOCK_AI_PORT}`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   },

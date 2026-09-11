@@ -61,12 +61,21 @@ async function main() {
 
   // ---------- ключ не от того провайдера ловится сразу ----------
   const wrong = await j('/settings/ai', {
-    method: 'PUT', h: adm, body: { provider: 'anthropic', api_key: 'gsk_groqключиктакненачинаются' },
+    method: 'PUT', h: adm, body: { provider: 'anthropic', api_key: 'gsk_groqkey0123456789abcdef' },
   });
   check('ключ не от того провайдера не принимается',
     wrong.s === 422 && wrong.d?.error?.code === 'wrong_key', `${wrong.s} ${wrong.d?.error?.code ?? ''}`);
   check('в отказе написано, с чего начинается верный ключ',
     /sk-ant-/.test(wrong.d?.error?.message ?? ''), wrong.d?.error?.message ?? '');
+
+  // Ключ уходит в заголовок HTTP: кириллица из буфера обмена там даёт
+  // невнятную ошибку внутри библиотеки вместо понятной фразы.
+  const cyrillic = await j('/settings/ai', {
+    method: 'PUT', h: adm, body: { provider: 'anthropic', api_key: 'sk-ant-ключ-с-кириллицей' },
+  });
+  check('ключ с посторонними символами не принимается',
+    cyrillic.s === 422 && /посторонние символы/.test(cyrillic.d?.error?.message ?? ''),
+    `${cyrillic.s} ${cyrillic.d?.error?.message ?? ''}`);
 
   // ---------- свой ключ через интерфейс ----------
   const set = await j('/settings/ai', {

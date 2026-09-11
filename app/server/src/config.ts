@@ -82,6 +82,12 @@ export const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? '').trim();
  */
 export const ANTHROPIC_MODEL = process.env.LMS_AI_MODEL ?? 'claude-sonnet-5';
 
+/**
+ * Адрес Claude. Меняется в двух случаях: корпоративный прокси и наши же
+ * проверки, которым нужен подставной сервер вместо платного настоящего.
+ */
+export const ANTHROPIC_BASE_URL = (process.env.ANTHROPIC_BASE_URL ?? '').trim();
+
 /** Регламент в Word — это текст: даже сотня страниц весит меньше мегабайта. */
 export const MAX_DOC_MB = Number(process.env.LMS_MAX_DOC_MB ?? 10);
 
