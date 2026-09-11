@@ -107,6 +107,23 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return null;
 
+  /*
+   * Два разных списка недоделок, и путать их нельзя.
+   *
+   * `data.problems` — каркас на всю сеть: нет блока с уроком, нет аттестации,
+   * у точечного урока не выбраны точки. Ровно на этом сервер отказывает
+   * в публикации, поэтому кнопка гаснет именно по нему.
+   *
+   * Ошибки точки — это незаполненное содержимое. Публикацию они НЕ держат:
+   * траектория публикуется целиком, а в онбординг с неготовой точки система
+   * просто не пускает и подбирает людей сама, как только пробел закроют.
+   * Гасить кнопку по ним значило бы запереть кадровика, у которого готовы
+   * две точки из трёх, — сервер бы такую публикацию принял.
+   */
+  const currentLocation = data.locations?.find((l) => l.location_id === at);
+  const hereProblems = currentLocation?.problems ?? [];
+  const canPublish = data.problems.length === 0;
+
   const att = data.blocks.find((b) => b.kind === 'attestation');
   const regular = data.blocks.filter((b) => b.kind === 'regular');
 
@@ -152,7 +169,13 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
           <button className="btn ghost sm" onClick={() => setPreview(true)}>Предпросмотр</button>
           {data.status === 'active'
             ? <button className="btn ghost sm" onClick={unpublish}>Снять с публикации</button>
-            : <button className="btn sm" onClick={publish}>Опубликовать</button>}
+            : (
+              <button className="btn sm" onClick={publish} disabled={!canPublish}
+                title={canPublish ? 'Открыть онбординг по этой траектории'
+                  : 'Сначала доделайте каркас — список ниже'}>
+                Опубликовать
+              </button>
+            )}
         </div>
       </div>
 
@@ -167,15 +190,29 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
             </select>
           </label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {data.locations?.map((l) => (
-              <button key={l.location_id} className="btn ghost sm"
-                onClick={() => setAt(l.location_id)}
-                title={l.ready ? 'Всё заполнено' : l.problems.slice(0, 3).join('; ')}
-                style={{ borderColor: l.ready ? 'var(--success)' : 'var(--warn, #b8860b)' }}>
-                {l.ready ? '●' : '○'} {l.name}
-                {!l.ready && <span className="muted"> · не хватает {l.problems.length}</span>}
-              </button>
-            ))}
+            {/* Выбранная точка — залитой кнопкой, недоделки — счётчиком на ней:
+                так видно, куда идти, не открывая каждую по очереди. */}
+            {data.locations?.map((l) => {
+              const active = l.location_id === at;
+              return (
+                <button key={l.location_id} className={`btn sm${active ? '' : ' ghost'}`}
+                  onClick={() => setAt(l.location_id)}
+                  title={l.ready ? 'Всё заполнено' : l.problems.slice(0, 3).join('; ')}
+                  style={{ borderColor: l.ready ? 'var(--success)' : 'var(--warn, #b8860b)' }}>
+                  {l.name}
+                  {l.ready ? (
+                    <span style={{ marginLeft: 6, color: active ? 'inherit' : 'var(--success)' }}>✓</span>
+                  ) : (
+                    <span style={{
+                      marginLeft: 6, padding: '1px 7px', borderRadius: 10, fontSize: 11,
+                      fontWeight: 700, background: 'var(--warn, #b8860b)', color: '#fff',
+                    }}>
+                      {l.problems.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
         {data.locations?.some((l) => !l.ready) && (
@@ -208,12 +245,33 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
       {preview && <ConstructorPreview positionId={positionId} onClose={() => setPreview(false)} />}
 
+      {/* Каркас — то, на чём откажет сервер. Пишем отдельно и первым. */}
       {data.problems.length > 0 && (
         <div className="banner warn" style={{ marginBottom: 16 }}>
           <b>Чтобы опубликовать, доделайте:</b>
           <ul style={{ margin: '6px 0 0 18px' }}>
             {data.problems.slice(0, 8).map((p, i) => <li key={i} style={{ fontSize: 13 }}>{p}</li>)}
           </ul>
+        </div>
+      )}
+
+      {/* Содержимое точки. Публикацию не держит — держит онбординг на ней,
+          и сказать надо именно это, а не «нельзя опубликовать». */}
+      {hereProblems.length > 0 && (
+        <div className="banner warn" style={{ marginBottom: 16 }}>
+          <b>«{currentLocation?.name}» — новички этой точки будут ждать, пока не заполнено:</b>
+          <ul style={{ margin: '6px 0 0 18px' }}>
+            {hereProblems.slice(0, 8).map((p, i) => <li key={i} style={{ fontSize: 13 }}>{p}</li>)}
+          </ul>
+          {hereProblems.length > 8 && (
+            <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 0' }}>
+              …и ещё {hereProblems.length - 8}
+            </p>
+          )}
+          <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+            Публиковать это не мешает: на готовых точках онбординг откроется сразу,
+            а здешние новички уйдут учиться сами, как только пробел закроют.
+          </p>
         </div>
       )}
 
