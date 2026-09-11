@@ -5,9 +5,10 @@ import { authRequired, err } from '../auth.ts';
 import { audit } from '../audit.ts';
 import { stamp } from '../clock.ts';
 import { contentSlot } from '../content.ts';
-import { AiError, aiInfo, aiUnavailableReason, readPdf } from '../ai/provider.ts';
+import { AiError, aiEnabled, aiInfo, aiUnavailableReason, readPdf } from '../ai/provider.ts';
 import { MAX_DOC_MB } from '../config.ts';
 import { DocError, extractDocument, headingsOf, markNumberedHeadings } from '../docx.ts';
+import { extractPdfText, PdfError } from '../pdf.ts';
 import { buildLessonDraft, DraftSchema } from '../ai/lesson.ts';
 import { buildTrajectoryPlan, PlanApplySchema, sourceFor, type Section } from '../ai/plan.ts';
 import { buildPreOnboarding, PreSchema } from '../ai/pre.ts';
@@ -63,16 +64,53 @@ export default async function aiRoutes(app: FastifyInstance) {
     const name = (part.filename || '').toLowerCase();
     const body = Buffer.concat(chunks);
 
-    // PDF читает сама модель: свой разбор не берёт ни сканы, ни сложную вёрстку,
-    // а регламент, распечатанный и отсканированный, — обычное дело.
+    /*
+     * PDF в два захода, и порядок важен.
+     *
+     * Сначала читаем сами: у всего, что сделано «Сохранить как PDF» из Word,
+     * 1С или браузера, внутри есть текстовый слой. Это ничего не стоит, ничего
+     * не ждёт по сети и работает на любом ключе и вовсе без ключа.
+     *
+     * Текста не нашлось — значит скан: внутри картинка, а не буквы. Тут своими
+     * силами сделать нечего, и файл уходит к Claude, который читает его
+     * глазами. Нет ключа Claude — говорим прямо, что это скан, а не «документ
+     * пустой»: человеку надо понять, что дело в файле, а не в системе.
+     */
     if (name.endsWith('.pdf')) {
+      let own = '';
+      let pages = 0;
+      try {
+        const r = extractPdfText(body);
+        own = r.text;
+        pages = r.pages;
+      } catch (e) {
+        if (e instanceof PdfError) return reply.code(422).send(err(e.code, e.message));
+        app.log.error(e);
+      }
+
+      if (own) {
+        const text = headingsOf(own).length ? own : markNumberedHeadings(own);
+        return { text, headings: headingsOf(text), kind: 'pdf', chars: text.length, pages, read_by: 'own' };
+      }
+
+      if (!aiEnabled() || !aiInfo().reads_documents) {
+        return reply.code(422).send(err(
+          'doc_scanned',
+          pages
+            ? 'В этом PDF нет текста — похоже, это скан или фотографии страниц. '
+              + 'Прочитать его может Claude: подключите его ключ в настройках. '
+              + 'Либо загрузите документ в формате Word.'
+            : 'В документе не нашлось текста',
+        ));
+      }
+
       try {
         const r = await readPdf(body, actor(req));
         if (!r.text) return reply.code(422).send(err('doc_empty', 'В документе не нашлось текста'));
         // Модель просили размечать заголовки, но полагаться на просьбу нельзя:
         // нумерация разделов видна и без неё.
         const text = headingsOf(r.text).length ? r.text : markNumberedHeadings(r.text);
-        return { text, headings: headingsOf(text), kind: 'pdf', chars: text.length };
+        return { text, headings: headingsOf(text), kind: 'pdf', chars: text.length, pages, read_by: 'claude' };
       } catch (e) {
         if (e instanceof AiError) {
           const status = e.code === 'doc_pdf' ? 422

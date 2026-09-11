@@ -267,7 +267,7 @@ export function extractDocument(file: Buffer, filename: string): ExtractResult {
     );
   }
   if (name.endsWith('.pdf')) {
-    throw new DocError('PDF читает только Claude — подключите его ключ или сохраните как .docx', 'doc_pdf');
+    throw new DocError('PDF разбирается отдельно — сюда он попасть не должен', 'doc_pdf');
   }
-  throw new DocError('Подойдёт .docx, .txt или .md', 'doc_unsupported');
+  throw new DocError('Подойдёт .docx, .pdf, .txt или .md', 'doc_unsupported');
 }

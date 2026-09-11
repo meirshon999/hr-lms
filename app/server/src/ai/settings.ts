@@ -38,8 +38,8 @@ export const PROVIDER_INFO: Record<Exclude<AiProvider, 'off'>, {
   baseUrl: string;
   defaultModel: string;
   free: boolean;
-  /** Читает ли PDF и картинки как есть, без пересохранения в .docx. */
-  readsPdf: boolean;
+  /** Читает ли скан — PDF, внутри которого картинка, а не текст. */
+  readsScans: boolean;
   note: string;
   /** Где человек заводит свой ключ — без этого «вставьте ключ» бесполезный совет. */
   consoleUrl: string;
@@ -54,8 +54,8 @@ export const PROVIDER_INFO: Record<Exclude<AiProvider, 'off'>, {
     baseUrl: GROQ_BASE_URL,
     defaultModel: GROQ_MODEL,
     free: true,
-    readsPdf: false,
-    note: 'Бесплатный тариф с дневными лимитами. PDF не читает — документ нужно сохранить как .docx.',
+    readsScans: false,
+    note: 'Бесплатный тариф с дневными лимитами. Скан PDF не прочитает — только документы, в которых есть текст.',
     consoleUrl: 'https://console.groq.com/keys',
     keyPrefix: 'gsk_',
     price: 'Бесплатно. Карту привязывать не нужно.',
@@ -66,8 +66,8 @@ export const PROVIDER_INFO: Record<Exclude<AiProvider, 'off'>, {
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4o-mini',
     free: false,
-    readsPdf: false,
-    note: 'Платно по расходу. PDF не читает — документ нужно сохранить как .docx.',
+    readsScans: false,
+    note: 'Платно по расходу. Скан PDF не прочитает — только документы, в которых есть текст.',
     consoleUrl: 'https://platform.openai.com/api-keys',
     keyPrefix: 'sk-',
     price: 'Платно по расходу. Нужна карта и пополненный баланс в кабинете.',
@@ -78,8 +78,8 @@ export const PROVIDER_INFO: Record<Exclude<AiProvider, 'off'>, {
     baseUrl: '',
     defaultModel: ANTHROPIC_MODEL,
     free: false,
-    readsPdf: true,
-    note: 'Платно по расходу. Читает PDF как есть — даже скан, где текста в файле нет.',
+    readsScans: true,
+    note: 'Платно по расходу. Читает даже скан — PDF, внутри которого картинка, а не текст.',
     consoleUrl: 'https://console.anthropic.com/settings/keys',
     keyPrefix: 'sk-ant-',
     price: 'Платно по расходу. Нужна карта и пополненный баланс в кабинете.',

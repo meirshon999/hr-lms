@@ -35,11 +35,9 @@ interface Pre { items: PreItem[] }
 
 type Phase = 'input' | 'filling' | 'ready';
 
-export function AiPlanDialog({ positionId, positionName, readsPdf, hasContent, onClose, onApplied }: {
+export function AiPlanDialog({ positionId, positionName, hasContent, onClose, onApplied }: {
   positionId: string;
   positionName: string;
-  /** Провайдер читает PDF сам — тогда и .pdf можно загрузить как есть. */
-  readsPdf?: boolean;
   /** В траектории уже есть блоки — значит, надо спросить: заменить или добавить. */
   hasContent?: boolean;
   onClose: () => void;
@@ -206,7 +204,7 @@ export function AiPlanDialog({ positionId, positionName, readsPdf, hasContent, o
               <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
                 Регламенты и инструкции: из них вырастут блоки, уроки и тесты
               </p>
-              <input ref={trainPick} type="file" multiple accept={DOC_ACCEPT(readsPdf)} hidden
+              <input ref={trainPick} type="file" multiple accept={DOC_ACCEPT} hidden
                 onChange={(e) => { const f = e.target.files; if (f?.length) pickDocuments(f, 'train'); }} />
               <button className="btn ghost sm" disabled={busy !== null || phase === 'filling'}
                 onClick={() => trainPick.current?.click()}>
@@ -229,7 +227,7 @@ export function AiPlanDialog({ positionId, positionName, readsPdf, hasContent, o
               <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
                 Рассказ о сети: его читают дома, до первой смены. Тестов здесь нет
               </p>
-              <input ref={prePick} type="file" multiple accept={DOC_ACCEPT(readsPdf)} hidden
+              <input ref={prePick} type="file" multiple accept={DOC_ACCEPT} hidden
                 onChange={(e) => { const f = e.target.files; if (f?.length) pickDocuments(f, 'pre'); }} />
               <button className="btn ghost sm" disabled={busy !== null || phase === 'filling'}
                 onClick={() => prePick.current?.click()}>

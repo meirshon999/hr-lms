@@ -190,7 +190,6 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
         <AiPlanDialog
           positionId={positionId}
           positionName={positionName}
-          readsPdf={!!ai?.reads_documents}
           hasContent={regular.length > 0}
           onClose={() => setPlanning(false)}
           onApplied={refresh}
@@ -269,7 +268,7 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
           <div className="body">
             {b.lessons.map((l: any, li: number) => (
               <LessonEditor key={l.id} lesson={l} onChange={refresh} at={at} locations={locs?.items ?? []}
-                ai={!!ai?.enabled} readsPdf={!!ai?.reads_documents}
+                ai={!!ai?.enabled}
                 i={li} count={b.lessons.length} onMove={(d) => moveLesson(b.id, b.lessons, li, d)} />
             ))}
             <InlineAdd placeholder="Название урока" label="+ урок"
@@ -306,9 +305,9 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   );
 }
 
-function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, readsPdf }: {
+function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai }: {
   lesson: any; onChange: () => void; i: number; count: number; onMove: (dir: -1 | 1) => void;
-  at: string; locations: Loc[]; ai: boolean; readsPdf: boolean;
+  at: string; locations: Loc[]; ai: boolean;
 }) {
   const [tab, setTab] = useState<'material' | 'test' | 'scope' | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -349,7 +348,6 @@ function LessonEditor({ lesson, onChange, i, count, onMove, at, locations, ai, r
           lessonTitle={lesson.title}
           locationId={slot}
           locationName={slot ? here : undefined}
-          readsPdf={readsPdf}
           onClose={() => setAiOpen(false)}
           onApplied={() => { setAiOpen(false); onChange(); }}
         />

@@ -46,7 +46,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         title: v.title,
         default_model: v.defaultModel,
         free: v.free,
-        reads_documents: v.readsPdf,
+        reads_documents: v.readsScans,
         note: v.note,
         console_url: v.consoleUrl,
         key_prefix: v.keyPrefix,

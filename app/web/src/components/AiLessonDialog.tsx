@@ -16,12 +16,10 @@ interface Draft { title: string; material: string; questions: Question[] }
  * уверенный и неверный тест, и заметит это только человек, знающий смену.
  */
 export function AiLessonDialog({
-  lessonId, lessonTitle, locationId, locationName, readsPdf, onClose, onApplied,
+  lessonId, lessonTitle, locationId, locationName, onClose, onApplied,
 }: {
   lessonId: string;
   lessonTitle: string;
-  /** Провайдер читает PDF сам — тогда и .pdf можно загрузить как есть. */
-  readsPdf?: boolean;
   /** Пусто — урок общий на сеть. Иначе правим вариант этой точки. */
   locationId?: string;
   locationName?: string;
@@ -150,7 +148,7 @@ ${r.text}` : r.text));
             <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="muted" style={{ fontSize: 12 }}>{source.trim().length} символов</span>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input ref={filePick} type="file" accept={DOC_ACCEPT(readsPdf)} hidden
+                <input ref={filePick} type="file" accept={DOC_ACCEPT} hidden
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) pickDocument(f); }} />
                 <button className="btn ghost sm" disabled={busy !== null}
                   onClick={() => filePick.current?.click()}>
@@ -163,8 +161,8 @@ ${r.text}` : r.text));
             </div>
             {busy === null && (
               <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Можно не печатать: загрузите файл Word{readsPdf && ' или PDF'} —
-                текст добавится сюда же.
+                Можно не печатать: загрузите файл Word или PDF — текст
+                добавится сюда же.
               </p>
             )}
             {source.trim().length > 0 && source.trim().length < 200 && (

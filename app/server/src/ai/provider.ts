@@ -133,10 +133,7 @@ async function viaAnthropic<T>(req: AiRequest<T>, s: AiSettings): Promise<AiResu
       model: s.model,
       max_tokens: req.maxTokens ?? 16000,
       system: req.system,
-      messages: [{ role: 'user', content: `${req.user}
-
-Форма ответа:
-${req.shape}` }],
+      messages: [{ role: 'user', content: `${req.user}\n\nФорма ответа:\n${req.shape}` }],
       output_config: { format: { type: 'json_schema', schema: req.jsonSchema } },
     });
   } catch (e: any) {
@@ -198,15 +195,15 @@ function anthropicError(e: any, s: AiSettings): AiError {
 }
 
 /**
- * ЧТЕНИЕ PDF ГЛАЗАМИ МОДЕЛИ.
+ * ЧТЕНИЕ СКАНА ГЛАЗАМИ МОДЕЛИ.
  *
- * Свой разбор PDF мы не пишем: текстовый слой там сжат, разбит на куски по
- * координатам и у сканов отсутствует вовсе — а регламент, распечатанный и
- * отсканированный, это ровно тот случай, ради которого всё и нужно. Claude
- * принимает PDF как есть, вместе с картинками и таблицами, и отдаёт текст.
+ * Обычный PDF разбирает `pdf.ts` своими силами — бесплатно и без ключа.
+ * Сюда попадает только то, с чем своими силами сделать нечего: скан, внутри
+ * которого картинка вместо букв. А регламент, распечатанный и отсканированный,
+ * — обычное дело. Claude принимает такой файл как есть и отдаёт текст.
  *
  * Работает только на ключе Claude. У Groq и OpenAI такого приёма нет, и врать
- * про это нельзя — им мы честно говорим «сохраните как .docx».
+ * про это нельзя — им мы честно говорим, что это скан.
  */
 export async function readPdf(file: Buffer, actor: string): Promise<{ text: string }> {
   const s = aiSettings();
@@ -389,7 +386,7 @@ export const aiInfo = () => {
     provider: s.provider,
     model: s.provider === 'off' ? null : s.model,
     reason: aiUnavailableReason(),
-    /** Читает ли провайдер PDF и картинки сам, без сторонних библиотек. */
+    /** Читает ли провайдер скан — PDF с картинкой вместо текста. */
     reads_documents: s.provider === 'anthropic',
     /** Откуда взят ключ — чтобы админ понимал, что он меняет. */
     source: s.source,

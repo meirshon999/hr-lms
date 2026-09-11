@@ -1,7 +1,9 @@
-import { sampleDocx } from './_docx.ts';
 /* ИИ-конструктор. Проверяет то, что можно проверить без ключа и без денег:
-   выключенное состояние, разбор слотов и применение черновика в каталог.
+   выключенное состояние, разбор документов, слоты и применение черновика.
      npx tsx scripts/e2e-ai.ts                                              */
+import { sampleDocx } from './_docx.ts';
+import { samplePdf, scannedPdf } from './_pdf.ts';
+
 const B = (process.env.LMS_URL ?? 'http://localhost:3001') + '/api/v1';
 const uniq = Date.now().toString().slice(-6);
 
@@ -181,12 +183,52 @@ async function main() {
   const old = await send(Buffer.from('x'), 'reglament.doc');
   check('старый .doc отклоняется с подсказкой',
     old.s === 422 && old.d?.error?.code === 'doc_old_format', old.d?.error?.message ?? '');
-  // PDF читает только Claude. На любом другом ключе отказ должен быть внятным,
-  // а не «попробуйте позже»: человеку надо понять, что делать с файлом.
-  const pdf = await send(Buffer.from('%PDF-1.4'), 'reglament.pdf');
-  check('pdf на не-Claude отклоняется честно',
-    status.provider === 'anthropic' || (pdf.s === 422 && pdf.d?.error?.code === 'doc_pdf'),
-    `${pdf.s} ${pdf.d?.error?.code ?? ''}`);
+  // ---------- PDF ----------
+  // Читаем своими силами: на бесплатном ключе и вовсе без ключа. Это главное,
+  // ради чего разбор написан — регламенты у сети именно в PDF.
+  const pdf = await send(samplePdf([{
+    lines: [
+      'Регламент бармена',
+      '1. Приём смены',
+      'Бармен приходит за пятнадцать минут до открытия и пересчитывает кассу.',
+      '2. Работа с гостем',
+      'Заказ повторяется вслух перед пробитием, чтобы не было споров по счёту.',
+    ],
+  }]), 'reglament.pdf');
+  check('pdf с текстом читается без всякого ключа',
+    pdf.s === 200 && (pdf.d?.text ?? '').includes('пересчитывает кассу'),
+    `${pdf.s} ${pdf.d?.error?.message ?? ''}`);
+  check('кириллица из pdf пришла целой, а не крокозябрами',
+    /^[\s\S]*Бармен приходит за пятнадцать минут[\s\S]*$/.test(pdf.d?.text ?? ''),
+    (pdf.d?.text ?? '').slice(0, 80));
+  check('разделы pdf распознаны как заголовки',
+    (pdf.d?.headings ?? []).length === 2,
+    JSON.stringify(pdf.d?.headings?.map((h: any) => h.title)));
+  check('видно, кто прочитал документ', pdf.d?.read_by === 'own', String(pdf.d?.read_by));
+
+  const uncompressed = await send(
+    samplePdf([{ lines: ['Памятка без сжатия потока внутри файла'] }], { compress: false }),
+    'bez-szhatiya.pdf');
+  check('pdf с несжатым потоком тоже читается',
+    uncompressed.s === 200 && (uncompressed.d?.text ?? '').includes('без сжатия'),
+    `${uncompressed.s} ${uncompressed.d?.error?.message ?? ''}`);
+
+  // Скан — картинка вместо букв. Своими силами тут ничего не сделать, и без
+  // ключа Claude человеку надо сказать это прямо, а не «документ пустой».
+  const scan = await send(scannedPdf(), 'skan.pdf');
+  check('скан без Claude отклоняется с внятной причиной',
+    status.provider === 'anthropic'
+    || (scan.s === 422 && scan.d?.error?.code === 'doc_scanned'),
+    `${scan.s} ${scan.d?.error?.code ?? ''}`);
+  check('в отказе сказано, что делать со сканом',
+    status.provider === 'anthropic'
+    || /скан|Claude|Word/i.test(scan.d?.error?.message ?? ''),
+    scan.d?.error?.message ?? '');
+
+  const brokenPdf = await send(Buffer.from('не pdf вовсе'), 'reglament.pdf');
+  check('файл не того формата с именем .pdf отклоняется, а не роняет сервер',
+    brokenPdf.s === 422 && brokenPdf.d?.error?.code === 'doc_broken',
+    `${brokenPdf.s} ${brokenPdf.d?.error?.code ?? ''}`);
   const junk = await send(Buffer.from('это не архив'), 'reglament.docx');
   check('битый docx отклоняется, а не роняет сервер',
     junk.s === 422 && junk.d?.error?.code === 'doc_broken', String(junk.s));
