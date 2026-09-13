@@ -17,7 +17,7 @@ interface Pos { id: string; name: string; trajectory_status: string; }
 export function Constructor() {
   const { positionId } = useParams();
   const nav = useNavigate();
-  const { bump, n } = useBump();
+  const { bump } = useBump();
   const { data: pl, loading, error, reload } = useAsync(() => get<{ items: Pos[] }>('/positions'), []);
 
   useEffect(() => {
@@ -55,8 +55,22 @@ export function Constructor() {
           </div>
 
           {positionId && (
+            /*
+             * Ключ — только должность, и это важно.
+             *
+             * Раньше сюда подмешивался общий счётчик обновлений, и любое
+             * сохранение меняло ключ: React выбрасывал редактор и собирал
+             * заново. Вместе с ним умирало всё, что помнил экран, — открытая
+             * вкладка урока, выбранная точка (сбрасывалась на первую) и место,
+             * где человек стоял прокруткой. Заметнее всего это было в «Где и
+             * чьё»: там щёлкают по галочкам подряд, и панель захлопывалась
+             * после каждой.
+             *
+             * Данные и без ключа свежие: `useAsync` перечитывает их сам,
+             * когда счётчик меняется.
+             */
             <TrajectoryEditor
-              key={positionId + n}
+              key={positionId}
               positionId={positionId}
               positionName={pl.items.find((p) => p.id === positionId)?.name ?? 'должность'}
               onChange={bump}
@@ -112,7 +126,10 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   const { data, loading, error, reload } = useAsync(
     () => get<Traj>(`/trajectories/${positionId}${at ? `?location=${at}` : ''}`), [positionId, at],
   );
-  const refresh = () => { reload(); onChange(); };
+  // Одного счётчика хватает: `useAsync` держит его в зависимостях и
+  // перечитывает и траекторию, и список должностей. Отдельный reload()
+  // здесь означал бы два запроса на каждое сохранение.
+  const refresh = () => onChange();
 
   if (loading && !data) return <Loader />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
