@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { all, one } from '../db.ts';
 import { authRequired } from '../auth.ts';
-import { daysBetweenStamps as daysBetween } from '../clock.ts';
+import { daysBetweenStamps as daysBetween, today } from '../clock.ts';
 import { isOverdue } from '../domain.ts';
 import { funnelByPosition } from '../funnel.ts';
 
@@ -94,14 +94,47 @@ export default async function analyticsRoutes(app: FastifyInstance) {
    * кадровик отметит стажировку. Кадровик об этом не узнает, пока не зайдёт
    * в список. Цифра в меню и есть замена уведомлению: она видна отовсюду.
    */
-  app.get('/attention', async () => {
-    const waiting = all<{ n: number }>(
-      `SELECT COUNT(*) n FROM employees
-        WHERE stage = 'intern' AND pre_onboarding_done = 1 AND internship_passed = 0`,
-    )[0]?.n ?? 0;
-    const overdue = all<any>(`SELECT * FROM employees WHERE stage = 'onboarding'`)
-      .filter(isOverdue).length;
-    return { waiting_internship: waiting, overdue };
+  app.get('/attention', async (req) => {
+    const waitingRows = all<any>(
+      `SELECT e.*, p.name position_name, l.name location_name
+         FROM employees e
+         LEFT JOIN positions p ON p.id = e.position_id
+         LEFT JOIN locations l ON l.id = e.location_id
+        WHERE e.stage = 'intern' AND e.pre_onboarding_done = 1 AND e.internship_passed = 0
+        ORDER BY e.start_date`,
+    );
+    const overdueRows = all<any>(
+      `SELECT e.*, p.name position_name, l.name location_name
+         FROM employees e
+         LEFT JOIN positions p ON p.id = e.position_id
+         LEFT JOIN locations l ON l.id = e.location_id
+        WHERE e.stage = 'onboarding'`,
+    ).filter(isOverdue);
+
+    const out: any = {
+      waiting_internship: waitingRows.length,
+      overdue: overdueRows.length,
+    };
+
+    /*
+     * Список людей — только по запросу (`?list=1`).
+     *
+     * Цифру в боковом меню спрашивает каждый экран кадровика, и таскать вместе
+     * с ней два десятка карточек ради одного числа незачем. А «Обзору» нужны
+     * именно имена: цифра говорит, что кто-то ждёт, а работать надо с людьми.
+     */
+    if ((req.query as any)?.list) {
+      const card = (e: any, kind: string, days: number) => ({
+        id: e.id, full_name: e.full_name, kind, days,
+        position: e.position_name ?? null, location: e.location_name ?? null,
+      });
+      out.items = [
+        // Просроченные первыми: у них срок уже прошёл, а стажёр просто ждёт.
+        ...overdueRows.map((e) => card(e, 'overdue', daysBetween(e.onboarding_due_date, today()))),
+        ...waitingRows.map((e) => card(e, 'internship', daysBetween(e.start_date, today()))),
+      ].slice(0, 12);
+    }
+    return out;
   });
 
   // Журнал действий переехал к администратору — см. routes/users.ts.

@@ -165,7 +165,14 @@ export function funnelByPosition(locationId?: string): PositionFunnel[] {
         for (const { e, w } of pool) {
           const at = w.doneAt[i];
           const from = i === 1 ? e.created_at : e.onboarding_opened_at;
-          if (w.step > i && at && from) days.push(daysBetweenStamps(from, at));
+          if (!(w.step > i && at && from)) continue;
+          // Отрицательный срок показывать нельзя: такой цифры не бывает.
+          // Берётся он не из поломки, а из разнородных отметок времени — найм
+          // записан мгновением, а открытие обучения датой, — и из данных,
+          // заведённых задним числом. Ноль здесь значит «ждать не пришлось»;
+          // выбрасывать такие случаи нельзя, иначе ступень остаётся вовсе
+          // без срока, хотя люди её прошли.
+          days.push(Math.max(0, daysBetweenStamps(from, at)));
         }
       }
 
