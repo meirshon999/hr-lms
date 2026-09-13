@@ -47,8 +47,14 @@ export function trajectoryTree(
       base.lessons = all<any>('SELECT * FROM lessons WHERE block_id = ? ORDER BY ord', b.id).map((l) => {
         const material = pick('materials', 'lesson_id', l.id);
         const test = pick('tests', 'lesson_id', l.id);
+        // Сколько времени урок займёт у сотрудника. Норму считает study.ts —
+        // та же, по которой потом решается, можно ли засчитать материал.
+        // В конструкторе она нужна, чтобы кадровик видел, на сколько часов
+        // он собрал обучение, а не узнавал это от первого стажёра.
+        const need = studySeconds(material);
         return {
           id: l.id, ord: l.ord, title: l.title,
+          study_seconds: need,
           everywhere: !!l.everywhere,
           content_per_location: !!l.content_per_location,
           locations: l.everywhere ? [] : all<{ location_id: string }>(
@@ -65,6 +71,21 @@ export function trajectoryTree(
   });
 
   return { id: t.id, position_id: t.position_id, status: t.status, pre_onboarding: pre, blocks };
+}
+
+/**
+ * Сколько времени материал займёт у сотрудника — или 0, если честно неизвестно.
+ *
+ * Ноль здесь значит «не знаем», а не «мгновенно». Пустой материал и ролик,
+ * длительность которого не прочиталась из файла, норму дают формальную —
+ * десять секунд, — и показывать её кадровику как «1 мин» значит врать ему
+ * в лицо. Лучше не показать ничего.
+ */
+function studySeconds(m: any): number {
+  if (!m || (!m.text_body && !m.file_url)) return 0;
+  const videoSec = videoSecOf(m.file_url);
+  if (m.content_type === 'video' && !videoSec) return 0;
+  return needFor(materialDto(m), videoSec).seconds;
 }
 
 function materialDto(m: any) {

@@ -15,7 +15,8 @@ import type { ReactNode } from 'react';
 
 export type IconName =
   | 'wand' | 'doc' | 'upload' | 'award' | 'eye' | 'check' | 'x' | 'trash'
-  | 'up' | 'down' | 'plus' | 'alert' | 'pin' | 'clock' | 'layers' | 'link';
+  | 'up' | 'down' | 'right' | 'plus' | 'alert' | 'pin' | 'clock' | 'layers' | 'link'
+  | 'grip';
 
 const SHAPES: Record<IconName, ReactNode> = {
   // Сборка через ИИ: большая искра и две малых — «собралось само»
@@ -30,6 +31,15 @@ const SHAPES: Record<IconName, ReactNode> = {
   trash: <><path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2h9.2L17.5 7" /></>,
   up: <path d="m6.5 14.5 5.5-5.5 5.5 5.5" />,
   down: <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />,
+  right: <path d="m9.5 6.5 5.5 5.5-5.5 5.5" />,
+  // Ручка перетаскивания: точки, а не линии — их ни с чем не спутаешь
+  grip: (
+    <g fill="currentColor" stroke="none">
+      <circle cx="9.2" cy="6" r="1.35" /><circle cx="14.8" cy="6" r="1.35" />
+      <circle cx="9.2" cy="12" r="1.35" /><circle cx="14.8" cy="12" r="1.35" />
+      <circle cx="9.2" cy="18" r="1.35" /><circle cx="14.8" cy="18" r="1.35" />
+    </g>
+  ),
   plus: <path d="M12 5.5v13M5.5 12h13" />,
   alert: <><path d="M12 4.2 2.9 19.8h18.2z" /><path d="M12 10v4.2M12 17.3v.1" /></>,
   pin: <><path d="M12 21s6.8-6.4 6.8-11a6.8 6.8 0 1 0-13.6 0C5.2 14.6 12 21 12 21z" /><circle cx="12" cy="10" r="2.5" /></>,

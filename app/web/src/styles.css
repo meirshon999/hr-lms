@@ -3,6 +3,9 @@
 @import '@fontsource/pt-sans/400.css';
 @import '@fontsource/pt-sans/700.css';
 @import '@fontsource/pt-sans/400-italic.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/manrope/800.css';
 
 /*
  * ПАЛИТРА.
@@ -263,10 +266,13 @@ input, textarea, select { font: inherit; color: var(--text); }
 .hr-side .who .logout:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.6); }
 
 .hr-main { flex: 1; padding: 28px 30px 88px; max-width: 1280px; }
-/* в рабочей панели заголовки без засечек — засечки остаются в логотипе и у сотрудника */
-.hr-main h1, .hr-main h2, .hr-main h3, .hr-main h4 {
-  font-family: 'PT Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: var(--text); letter-spacing: -.01em; }
+/* Заголовки кабинета — плотный гротеск, а не ресторанный Playfair: в рабочей
+   таблице засечки читаются медленнее, а крупный жирный заголовок держит экран.
+   Playfair остаётся знаку, экрану входа и сотруднику. */
+.hr-main h1, .hr-main h2, .hr-main h3, .hr-main h4,
+.inspector b, .bcard > header h4 {
+  font-family: 'Manrope', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text); letter-spacing: -.02em; font-weight: 800; }
 .hr-main h1 { font-size: 24px; margin-bottom: 3px; }
 .hr-main h2 { font-size: 17px; }
 .hr-main .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
@@ -311,41 +317,76 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 
 /* ---------- constructor ----------
  *
- * Правило одной рамки. Было так: рамка блока → рамка урока → рамка редактора
- * → рамка карточки вопроса → рамки полей, все одного цвета и толщины. Глаз
- * переставал понимать, что во что вложено. Теперь рамка есть только у карточки
- * верхнего уровня, вложенность показывают подложкой, а поля ввода остаются
- * обведёнными — там рамка означает «сюда можно печатать».
+ * Правило одной рамки. Было пять слоёв подряд: блок, урок, редактор, карточка
+ * вопроса, поля — все одного цвета. Теперь рамка только у карточки верхнего
+ * уровня, вложенность показывает подложка, а обведены лишь поля ввода: там
+ * рамка значит «сюда можно печатать».
  */
-.builder { display: grid; grid-template-columns: 244px 1fr; gap: 22px; align-items: start; }
-.pos-list a { display: block; padding: 11px 13px; border: 1px solid transparent; border-radius: var(--radius-sm);
-  background: transparent; text-decoration: none; color: var(--text); margin-bottom: 4px; font-size: 14.5px; }
-.pos-list a:hover { background: var(--surface-2); }
-.pos-list a.active { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow-card); }
-.pos-list a .st { font-size: 12px; font-weight: 700; margin-top: 2px; }
+.builder { display: block; }
 
-.builder-block { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface);
+/* Должности строкой: место колонки слева заняла панель свойств справа. */
+.pos-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 700; text-decoration: none; color: var(--text);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  transition: .15s; cursor: pointer; }
+.chip:hover { border-color: #d3d8de; background: var(--surface-2); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #241318; box-shadow: none; }
+.chip:disabled { opacity: .5; cursor: default; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.chip .dot.live { background: var(--success); }
+.chip.on .dot { background: #241318; opacity: .5; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .chip { padding: 6px 11px; font-size: 12.5px; }
+/* Выбранное свойство — мягкая заливка, а не сплошное золото: сплошным залита
+   только главная кнопка экрана, иначе акцентов на экране снова становится пять. */
+.chips .chip.on { background: var(--accent-soft); border-color: #e4d4b0; color: var(--accent-dark); }
+.chips .chip.on .dot { background: var(--accent-dark); }
+
+/* Дерево и панель свойств. */
+.build { display: grid; grid-template-columns: minmax(0, 1fr) 312px; gap: 22px; align-items: start; }
+.inspector { position: sticky; top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.inspector .panel { margin-bottom: 0; }
+.inspector .field { margin-bottom: 16px; }
+
+.bcard { border: 1px solid var(--line-soft); border-radius: 14px; background: var(--surface);
   box-shadow: var(--shadow-card); margin-bottom: 16px; }
-.builder-block > header { padding: 14px 18px; display: flex; align-items: center; gap: 10px;
+.bcard > header { padding: 13px 16px; display: flex; align-items: center; gap: 10px;
   border-bottom: 1px solid var(--line-soft); }
-.builder-block > header h4 { flex: 1; font-size: 15px; }
-.builder-block .body { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
-.builder-block .body > * { width: 100%; }
-.builder-block .body > .btn { width: auto; }
-/* Пустой блок — не ошибка вёрстки, а незаконченная работа: показываем мягко. */
-.builder-block.empty { border-color: #e7c9c4; }
+.bcard > header h4 { flex: 1; font-size: 15px; }
+.bcard > header .sum { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.bcard .body { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px;
+  align-items: flex-start; }
+.bcard .body > * { width: 100%; }
+.bcard .body > .btn { width: auto; }
+.bcard.empty { border-color: #e7c9c4; }
 
-.b-lesson { border: none; border-radius: var(--radius-sm); padding: 12px 14px; margin: 0; background: var(--surface-2); }
-.b-lesson .lh { display: flex; align-items: center; gap: 8px; }
-.b-lesson .lh b { flex: 1; }
-.b-lesson .lh h4 { flex: 1; }
-/* Урок с пробелом: полоса слева вместо рамки вокруг — видно в списке и
-   не превращает десяток уроков в красную стену. */
-.b-lesson.gap { box-shadow: inset 3px 0 0 var(--error); }
-.b-lesson .acts { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+/* Строка урока: ручка, шеврон, название, длительность, метки. */
+.lrow { border-radius: 10px; background: var(--surface-2); }
+.lrow.open { box-shadow: 0 0 0 1px var(--line-soft); }
+.lrow.gap { box-shadow: inset 3px 0 0 var(--error); }
+.lrow.gap.open { box-shadow: inset 3px 0 0 var(--error), 0 0 0 1px var(--line-soft); }
+.lhead { display: flex; align-items: center; gap: 8px; padding: 9px 12px 9px 10px; }
+.lrow .grip, .bcard > header .grip { display: inline-flex; color: #b9c0c8; cursor: grab; flex: none; }
+.lrow .grip:active, .bcard > header .grip:active { cursor: grabbing; }
+.lrow:hover .grip, .bcard > header:hover .grip { color: var(--muted); }
+.lrow .chev { display: inline-flex; padding: 2px; color: var(--muted); flex: none; }
+.lrow .name { flex: 1; cursor: pointer; font-size: 14.5px; min-width: 90px; }
+.lrow .dur { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lbody { padding: 2px 12px 14px; }
+.section + .section { margin-top: 12px; }
+.shead { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
+.shead b { font-size: 12.5px; }
 
-/* Белая подложка внутри урока: редактор материала, теста, области действия. */
+/* Перетаскивание: что тащим и куда уронят. */
+.dragging { opacity: .45; }
+.drop.before { box-shadow: inset 0 3px 0 var(--accent); }
+.drop.after { box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* Белая подложка внутри урока: редактор материала и теста. */
 .pane { background: var(--surface); border-radius: var(--radius-sm); padding: 14px; box-shadow: var(--shadow); }
+
 /* Поля в конструкторе. Рамка остаётся только здесь — это единственное место,
    где она значит «сюда можно печатать», а не «тут кончается один блок». */
 .builder input[type="text"], .builder input[type="number"], .builder input:not([type]),
@@ -355,7 +396,12 @@ table.grid tbody tr:hover { background: #fdfaf6; }
 .builder textarea { line-height: 1.5; resize: vertical; }
 .builder input:focus, .builder textarea:focus, .builder select:focus {
   outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
-.pane + .pane { margin-top: 10px; }
+
+.b-lesson { border: none; border-radius: var(--radius-sm); padding: 12px 14px; margin: 0;
+  background: var(--surface-2); }
+.b-lesson .lh { display: flex; align-items: center; gap: 8px; }
+.b-lesson .lh b { flex: 1; }
+.b-lesson .lh h4 { flex: 1; }
 
 .tag { font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
   background: #eceff2; color: var(--muted); white-space: nowrap; }
@@ -374,14 +420,17 @@ table.grid tbody tr:hover { background: #fdfaf6; }
   display: inline-grid; place-items: center; background: var(--warn); color: #fff; }
 .tabs .done { color: var(--success); stroke-width: 2.2; }
 
-/* Строка недоделок: свёрнутая в одну фразу, с переходом к первому пробелу.
-   Список из восьми пунктов наверху экрана всё равно не читали. */
+/* Строка недоделок: свёрнутая в одну фразу, с переходом к первому пробелу. */
 .notice { display: flex; align-items: center; gap: 10px; padding: 11px 15px; border-radius: var(--radius);
   font-size: 13.5px; margin-bottom: 14px; }
 .notice .grow { flex: 1; }
 .notice.warn { background: var(--warn-soft); color: #7a5310; }
 .notice.bad { background: var(--error-soft); color: var(--error); }
-.notice.info { background: var(--surface-2); color: var(--muted); }
+.notice.info { background: var(--surface); color: var(--text); border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-card); }
+.notice .bar { display: block; height: 4px; border-radius: 2px; background: var(--line); margin-top: 7px; }
+.notice .bar > i { display: block; height: 4px; border-radius: 2px; background: var(--accent);
+  transition: width .3s; }
 details.notice { display: block; }
 details.notice > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
 details.notice > summary::-webkit-details-marker { display: none; }
@@ -394,18 +443,13 @@ details.notice li { font-size: 13px; margin-top: 3px; }
 
 /* Пустая должность: приглашение принести документы, а не выговор за то,
    что в ней ещё ничего нет. */
-.invite { background: var(--surface); border: 1px dashed var(--line); border-radius: 14px;
+.invite { background: var(--surface); border: 1px dashed var(--line); border-radius: 16px;
   padding: 44px 28px; text-align: center; }
-.invite .ico { width: 54px; height: 54px; border-radius: 15px; background: var(--accent-soft);
+.invite .ico { width: 54px; height: 54px; border-radius: 16px; background: var(--accent-soft);
   color: var(--accent-dark); display: grid; place-items: center; margin: 0 auto 16px; }
 .invite h3 { font-size: 19px; margin-bottom: 8px; }
 .invite p { color: var(--muted); font-size: 14px; max-width: 470px; margin: 0 auto 20px; }
 .invite .or { margin-top: 14px; font-size: 13px; }
-
-/* Шапка экрана: состояние слева, действия справа. */
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  flex-wrap: wrap; margin-bottom: 16px; }
-.page-head .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- DevBar ---------- */
 .devbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; height: var(--devbar-h);
@@ -533,6 +577,7 @@ details.notice li { font-size: 13px; margin-top: 3px; }
   .mini-progress .progress { width: 110px; }
 
   /* конструктор на телефоне не редактируем */
-  .builder { grid-template-columns: 1fr; }
+  .build { grid-template-columns: 1fr; }
+  .inspector { position: static; }
   .desktop-only-note { display: flex; }
 }
