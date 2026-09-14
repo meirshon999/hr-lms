@@ -132,14 +132,24 @@ export function Employees() {
 
 const pct = (p: { passed: number; total: number }) => (p.total ? Math.round((p.passed / p.total) * 100) : 0);
 
+/**
+ * Временный пароль придумывать незачем.
+ *
+ * Сотрудник сменит его при первом входе, а чаще и вовсе не увидит — доступ
+ * отдают ссылкой-приглашением. Пустое поле на этом месте заставляло кадровика
+ * останавливаться и выдумывать, и выдумывал он «123456» пятьдесят раз подряд.
+ */
+const tempPassword = () =>
+  Math.random().toString(36).slice(-4) + Math.random().toString(36).slice(-4);
+
 function AddEmployee({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const { data: pos, loading: posLoading, error: posError } = useAsync(() => get<{ items: Pos[] }>('/positions'), []);
   const { data: locs, loading: locLoading, error: locError } = useAsync(() => get<{ items: Loc[] }>('/locations'), []);
-  const [f, setF] = useState({
+  const [f, setF] = useState(() => ({
     iin: '', full_name: '', position_id: '', location_id: '', phone: '+7',
-    start_date: new Date().toISOString().slice(0, 10), login: '', password: '',
-  });
+    start_date: new Date().toISOString().slice(0, 10), login: '', password: tempPassword(),
+  }));
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -220,7 +230,8 @@ function AddEmployee({ onClose, onDone }: { onClose: () => void; onDone: () => v
             <input value={f.password} minLength={6}
               onChange={(e) => setF({ ...f, password: e.target.value })} required />
             <span className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Сотрудник сменит его при первом входе
+              Придуман за вас. Сотрудник сменит его при первом входе, а чаще
+              доступ отдают ссылкой-приглашением из карточки
             </span>
           </label>
         </div>

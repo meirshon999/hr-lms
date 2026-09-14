@@ -90,14 +90,14 @@ input, textarea, select { font: inherit; color: var(--text); }
 .muted { color: var(--muted); }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; }
 .pill.locked { background: #eceff2; color: var(--muted); }
-.pill.available { background: #f6ecd8; color: var(--accent-dark); }
+.pill.available { background: var(--accent-soft); color: var(--accent-dark); }
 .pill.passed { background: #e4f1ea; color: var(--success); }
-.pill.stage-intern { background: #f6ecd8; color: var(--accent-dark); }
+.pill.stage-intern { background: var(--accent-soft); color: var(--accent-dark); }
 .pill.stage-onboarding { background: #eae2f2; color: #6a4c93; }
 /* Завершил и Просрочено — это итог и тревога. Пастельные, как у остальных,
    они тонули в таблице: глаз не находил ни того, ни другого. */
 .pill.stage-completed { background: var(--success); color: #fff; }
-.pill.stage-archived { background: #f0ebe4; color: var(--muted); }
+.pill.stage-archived { background: #eceff2; color: var(--muted); }
 .pill.overdue { background: var(--error); color: #fff; }
 
 .field { display: block; margin-bottom: 14px; }
@@ -109,11 +109,12 @@ input, textarea, select { font: inherit; color: var(--text); }
 .progress { height: 9px; border-radius: 999px; background: #efe7dc; overflow: hidden; }
 .progress > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s; }
 .progress.over > i { background: var(--error); }
+.hr-main .progress { background: #e8ebef; }
 
-.banner { padding: 12px 16px; border-radius: 11px; font-size: 14.5px; }
-.banner.info { background: #f4ede2; color: var(--primary-2); }
-.banner.warn { background: #fbeceb; color: var(--error); }
-.banner.ok { background: #e4f1ea; color: var(--success); }
+.banner { padding: 12px 16px; border-radius: var(--radius); font-size: 14.5px; }
+.banner.info { background: var(--surface-2); color: var(--text); }
+.banner.warn { background: var(--error-soft); color: var(--error); }
+.banner.ok { background: var(--success-soft); color: var(--success); }
 
 .spinner { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--accent);
   border-radius: 50%; animation: spin .8s linear infinite; }
@@ -277,18 +278,22 @@ input, textarea, select { font: inherit; color: var(--text); }
 .hr-main h2 { font-size: 17px; }
 .hr-main .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
 
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-.toolbar input, .toolbar select { padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+.toolbar input, .toolbar select { padding: 9px 12px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); }
+.toolbar input:focus, .toolbar select:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .toolbar .grow { flex: 1; }
 
-table.grid { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line);
-  border-radius: var(--radius); overflow: hidden; }
+table.grid { width: 100%; border-collapse: collapse; background: var(--surface);
+  border: 1px solid var(--line-soft); border-radius: var(--radius); overflow: hidden;
+  box-shadow: var(--shadow-card); }
 table.grid th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); padding: 12px 14px; background: #faf5ef; border-bottom: 1px solid var(--line); }
-table.grid td { padding: 13px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+  color: var(--muted); padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line-soft); }
+table.grid td { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); font-size: 14.5px; }
 table.grid tr:last-child td { border-bottom: none; }
 table.grid tbody tr { cursor: pointer; }
-table.grid tbody tr:hover { background: #fdfaf6; }
+table.grid tbody tr:hover { background: var(--surface-2); }
 .mini-progress { display: flex; align-items: center; gap: 8px; }
 .mini-progress .progress { width: 90px; }
 
