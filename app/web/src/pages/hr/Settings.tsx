@@ -233,7 +233,7 @@ export function Settings() {
         {chosen && (
           <>
             {/* «Вставьте ключ» без ответа на «где его взять» — бесполезный совет. */}
-            <div className="panel" style={{ background: 'var(--bg-soft, rgba(0,0,0,.03))', marginBottom: 12 }}>
+            <div className="hint" style={{ marginBottom: 12 }}>
               <b style={{ fontSize: 13 }}>Где взять ключ</b>
               <ol className="muted" style={{ fontSize: 13, marginBottom: 0, paddingLeft: 18 }}>
                 <li>
