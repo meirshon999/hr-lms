@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { del, get, patch, post, put, ApiError } from '../../api';
-import { useAsync, useBump, Loader, ErrorBox, useToast } from '../../lib';
+import { del, get, patch, post, put, ApiError, extractDocument } from '../../api';
+import { useAsync, useBump, Loader, ErrorBox, useToast, DOC_ACCEPT } from '../../lib';
 import { InlineAdd, EditableTitle, MoveBtns, reordered } from '../../components/inline';
 import { useDragList, moved } from '../../components/dnd';
 import { Icon } from '../../components/Icon';
@@ -109,6 +109,9 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
   // Человек нажал «собрать вручную» — показываем пустое дерево вместо приглашения.
   const [manual, setManual] = useState(false);
   const [filling, setFilling] = useState<Filling | null>(null);
+  // Уроки, которым для сборки не хватило исходного текста: у них спрашиваем
+  // документ, а не отправляем человека обходить их поодиночке.
+  const [needDoc, setNeedDoc] = useState<any[] | null>(null);
   const stopFill = useRef(false);
   // Точка, глазами которой HR смотрит траекторию. Уроки с общим содержимым
   // выглядят одинаково на любой, а точечные показывают вариант выбранной.
@@ -211,19 +214,27 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
     }
   }
 
-  async function fillLessons(list: any[]) {
+  /**
+   * Заполнить пустые уроки списка.
+   *
+   * `fallback` — текст, который человек принёс сам; он идёт тем урокам,
+   * у которых сохранённого куска регламента нет. Без него такие уроки
+   * не пропускаем молча, а спрашиваем документ: «соберите их по одному» —
+   * это не ответ, когда уроков семь.
+   */
+  async function fillLessons(list: any[], fallback?: string) {
     const need = list.filter((l) => !hasMaterial(l) || !hasTest(l));
     if (!need.length) return;
     stopFill.current = false;
-    const skipped: string[] = [];
+    const skipped: any[] = [];
     let done = 0;
     let built = 0;
 
     for (const l of need) {
       if (stopFill.current) break;
       setFilling({ title: l.title, done, total: need.length });
-      const src = await sourceOf(l.id);
-      if (!src) { skipped.push(l.title); done++; continue; }
+      const src = fallback ?? await sourceOf(l.id);
+      if (!src) { skipped.push(l); done++; continue; }
       // У точечного урока содержимое заводится под выбранную точку,
       // у общего — на всю сеть; сервер не даст перепутать одно с другим.
       const slot = l.content_per_location ? { location_id: at } : {};
@@ -247,12 +258,9 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
 
     setFilling(null);
     refresh();
-    if (skipped.length) {
-      toast(`Собрано ${built}. Без исходного текста осталось ${skipped.length} — `
-        + 'откройте урок и соберите его отдельно', 'warn');
-    } else if (built) {
-      toast(`Собрано уроков: ${built}`);
-    }
+    if (built) toast(`Собрано уроков: ${built}`);
+    // Осталось то, что собрать было не из чего — спрашиваем документ.
+    if (skipped.length) setNeedDoc(skipped);
   }
 
   const movePre = (i: number, dir: -1 | 1) =>
@@ -300,6 +308,13 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
         />
       )}
       {preview && <ConstructorPreview positionId={positionId} onClose={() => setPreview(false)} />}
+      {needDoc && (
+        <BlockDocDialog
+          lessons={needDoc}
+          onClose={() => setNeedDoc(null)}
+          onText={(text) => { const list = needDoc; setNeedDoc(null); fillLessons(list, text); }}
+        />
+      )}
     </>
   );
 
@@ -412,9 +427,20 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
             </div>
           )}
 
-          {/* pre-onboarding */}
+          {/*
+            * Два этапа разведены заголовками, и это не украшение.
+            * Пре-онбординг читают дома, до первой смены, и тестов в нём нет;
+            * онбординг открывается только после отметки о стажировке. Пока
+            * карточки шли подряд и выглядели одинаково, кадровик складывал
+            * регламент смены туда, где его прочитают до найма.
+            */}
+          <div className="stage-h">
+            <h3>Пре-онбординг</h3>
+            <p>Читают дома, пока идёт стажировка. Рассказ о сети, без тестов</p>
+          </div>
+
           <div className="bcard">
-            <header><h4>Пре-онбординг — материалы о компании</h4></header>
+            <header><h4>Материалы о компании</h4></header>
             <div className="body">
               {data.pre_onboarding.map((it, i) => (
                 <div key={it.id} className="b-lesson">
@@ -452,6 +478,14 @@ function TrajectoryEditor({ positionId, positionName, onChange }: {
                   refresh();
                 }} />
             </div>
+          </div>
+
+          <div className="stage-h">
+            <h3>Онбординг</h3>
+            <p>
+              Открывается, когда вы отметите стажировку пройденной. Блоки, уроки
+              с тестами и финальная аттестация
+            </p>
           </div>
 
           <Blocks
@@ -851,6 +885,88 @@ function LessonProps({ lesson, locations, here, ai, onLessonAi, onChange }: {
           <Icon name="wand" /> Собрать этот урок
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * ДОКУМЕНТ ДЛЯ БЛОКА.
+ *
+ * Когда траекторию собирали из документов, сервер запомнил, какой кусок
+ * регламента относится к какому уроку, и «Заполнить блок» работает молча.
+ * Уроки, заведённые руками, такого куска не имеют — и раньше человек получал
+ * отказ: «соберите их по одному». Для семи уроков это не ответ.
+ *
+ * Поэтому спрашиваем один документ на всё, чего не хватило. Модель получает
+ * его целиком и название каждого урока отдельно — ровно так же, как при сборке
+ * одного урока, где текст тоже приносит человек.
+ */
+function BlockDocDialog({ lessons, onClose, onText }: {
+  lessons: any[]; onClose: () => void; onText: (text: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const pick = useRef<HTMLInputElement | null>(null);
+
+  async function read(files: FileList) {
+    setBusy(true); setErr(null);
+    try {
+      for (const file of Array.from(files)) {
+        const r = await extractDocument(file);
+        setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${r.text}` : r.text));
+      }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось прочитать документ');
+    } finally {
+      setBusy(false);
+      if (pick.current) pick.current.value = '';
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 6 }}>Из чего собирать?</h3>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+          {lessons.length} {plural(lessons.length, 'урок заведён', 'урока заведены', 'уроков заведены')}{' '}
+          вручную, и куска регламента у {lessons.length === 1 ? 'него' : 'них'} нет.
+          Принесите документ — материал и тест соберутся по нему, каждому уроку
+          своё по его названию.
+        </p>
+
+        <div className="hint" style={{ marginBottom: 12, fontSize: 12.5 }}>
+          {lessons.slice(0, 6).map((l) => l.title).join(' · ')}
+          {lessons.length > 6 && ` и ещё ${lessons.length - 6}`}
+        </div>
+
+        <input ref={pick} type="file" multiple accept={DOC_ACCEPT} hidden
+          onChange={(e) => { const f = e.target.files; if (f?.length) read(f); }} />
+        <button className="btn ghost sm" disabled={busy} onClick={() => pick.current?.click()}>
+          <Icon name="upload" /> {busy ? 'Читаем…' : 'Загрузить документ'}
+        </button>
+
+        <textarea value={text} rows={7} placeholder="…или вставьте текст"
+          onChange={(e) => setText(e.target.value)}
+          style={{ width: '100%', marginTop: 10, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
+        <span className="muted" style={{ fontSize: 11 }}>{text.trim().length} символов</span>
+
+        {err && <p style={{ color: 'var(--error)', fontSize: 13, marginTop: 8 }}>{err}</p>}
+
+        <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
+          <button className="btn ghost sm" onClick={onClose}>Не сейчас</button>
+          <button className="btn sm" disabled={busy || text.trim().length < 200}
+            onClick={() => onText(text.trim())}>
+            Заполнить {lessons.length}{' '}
+            {plural(lessons.length, 'урок', 'урока', 'уроков')}
+          </button>
+        </div>
+        {text.trim().length > 0 && text.trim().length < 200 && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+            Текста маловато — из пары строк урока не выйдет.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

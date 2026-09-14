@@ -362,6 +362,16 @@ table.mini tr:last-child td { border-bottom: none; }
 .inspector .panel { margin-bottom: 0; }
 .inspector .field { margin-bottom: 16px; }
 
+/* Заголовок этапа. Пре-онбординг и онбординг — разные вещи: первый читают
+   дома до первой смены, второй открывается после отметки о стажировке.
+   Пока карточки шли подряд и выглядели одинаково, их путали. */
+.stage-h { margin: 26px 0 12px; }
+.stage-h:first-child { margin-top: 0; }
+.stage-h h3 { font-size: 16px; display: flex; align-items: center; gap: 9px; }
+.stage-h h3::before { content: ''; width: 4px; height: 17px; border-radius: 2px;
+  background: var(--accent); flex: none; }
+.stage-h p { color: var(--muted); font-size: 12.5px; margin: 3px 0 0 13px; }
+
 .bcard { border: 1px solid var(--line-soft); border-radius: 14px; background: var(--surface);
   box-shadow: var(--shadow-card); margin-bottom: 16px; }
 .bcard > header { padding: 13px 16px; display: flex; align-items: center; gap: 10px;
